@@ -421,7 +421,7 @@ export function StinaDashboard() {
                               Analysis Results
                             </h4>
                             <Badge variant="outline" className="text-xs">
-                              {analysisState.analysisResult.confidence}
+                              {analysisState.analysisResult?.confidence}
                             </Badge>
                           </div>
 
@@ -435,12 +435,12 @@ export function StinaDashboard() {
                                 </span>
                               </div>
                               <p className="text-sm bg-blue-50 p-2 rounded border-l-2 border-blue-200">
-                                {analysisState.analysisResult.meetingIntent}
+                                {analysisState.analysisResult?.meetingIntent}
                               </p>
                             </div>
 
                             {/* Duration */}
-                            {analysisState.analysisResult.duration && (
+                            {analysisState.analysisResult?.duration && (
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
                                   <Clock className="w-3 h-3 text-green-600" />
@@ -449,14 +449,14 @@ export function StinaDashboard() {
                                   </span>
                                 </div>
                                 <p className="text-sm text-green-700">
-                                  {analysisState.analysisResult.duration}{' '}
+                                  {analysisState.analysisResult?.duration}{' '}
                                   minutes
                                 </p>
                               </div>
                             )}
 
                             {/* Location */}
-                            {analysisState.analysisResult.location && (
+                            {analysisState.analysisResult?.location && (
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
                                   <MapPin className="w-3 h-3 text-orange-600" />
@@ -465,14 +465,14 @@ export function StinaDashboard() {
                                   </span>
                                 </div>
                                 <p className="text-sm text-orange-700">
-                                  {analysisState.analysisResult.location}
+                                  {analysisState.analysisResult?.location}
                                 </p>
                               </div>
                             )}
 
                             {/* Invitees */}
-                            {analysisState.analysisResult.invitees &&
-                              analysisState.analysisResult.invitees.length >
+                            {analysisState.analysisResult?.invitees &&
+                              analysisState.analysisResult?.invitees.length >
                                 0 && (
                                 <div>
                                   <div className="flex items-center gap-2 mb-2">
@@ -480,14 +480,14 @@ export function StinaDashboard() {
                                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                                       Invitees (
                                       {
-                                        analysisState.analysisResult.invitees
+                                        analysisState.analysisResult?.invitees
                                           .length
                                       }
                                       )
                                     </span>
                                   </div>
                                   <div className="space-y-2">
-                                    {analysisState.analysisResult.invitees.map(
+                                    {analysisState.analysisResult?.invitees.map(
                                       (invitee, index) => (
                                         <div
                                           key={index}
