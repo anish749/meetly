@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/auth-service';
 import { adminDb } from '@/config/firebase-admin';
-import { FieldValue } from 'firebase-admin/firestore';
 
 export async function GET() {
   try {
@@ -11,14 +10,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const preferencesDoc = await adminDb
-      .collection('users')
-      .doc(user.email)
-      .collection('preferences')
-      .doc('primary')
-      .get();
+    const userDoc = await adminDb.collection('users').doc(user.email).get();
 
-    if (!preferencesDoc.exists) {
+    if (!userDoc.exists) {
       return NextResponse.json({
         content: '',
         wordCount: 0,
@@ -27,12 +21,15 @@ export async function GET() {
       });
     }
 
-    const data = preferencesDoc.data();
+    const userData = userDoc.data();
+    const content = userData?.stinaPreferences?.freeformPreferences || '';
+    const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
+
     return NextResponse.json({
-      content: data?.content || '',
-      wordCount: data?.wordCount || 0,
-      createdAt: data?.createdAt || null,
-      updatedAt: data?.updatedAt || null,
+      content,
+      wordCount,
+      createdAt: userData?.stinaPreferences?.createdAt || null,
+      updatedAt: userData?.stinaPreferences?.updatedAt || null,
     });
   } catch (error) {
     console.error('Error fetching preferences:', error);
@@ -68,29 +65,36 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const preferencesRef = adminDb
-      .collection('users')
-      .doc(user.email)
-      .collection('preferences')
-      .doc('primary');
+    const userRef = adminDb.collection('users').doc(user.email);
 
-    const preferencesDoc = await preferencesRef.get();
-    const now = FieldValue.serverTimestamp();
+    const userDoc = await userRef.get();
+    const now = new Date().toISOString();
 
-    if (!preferencesDoc.exists) {
-      await preferencesRef.set({
-        content,
-        wordCount,
-        createdAt: now,
+    if (!userDoc.exists) {
+      // Create user document with preferences
+      await userRef.set({
+        email: user.email,
+        stinaPreferences: {
+          freeformPreferences: content,
+          wordCount,
+          createdAt: now,
+          updatedAt: now,
+          version: 1,
+        },
         updatedAt: now,
-        version: 1,
       });
     } else {
-      await preferencesRef.update({
-        content,
-        wordCount,
+      // Update existing user document
+      const existingPrefs = userDoc.data()?.stinaPreferences || {};
+      await userRef.update({
+        stinaPreferences: {
+          ...existingPrefs,
+          freeformPreferences: content,
+          wordCount,
+          updatedAt: now,
+          version: (existingPrefs.version || 0) + 1,
+        },
         updatedAt: now,
-        version: FieldValue.increment(1),
       });
     }
 
