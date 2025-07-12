@@ -4,7 +4,7 @@ import { ContactInfo, UserPreferences } from './stina-agent';
 
 export interface ToolCallResult {
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string;
 }
 
@@ -17,7 +17,7 @@ export class StinaTools {
 
   async executeToolCall(
     toolName: string,
-    parameters: Record<string, any>
+    parameters: Record<string, unknown>
   ): Promise<ToolCallResult> {
     try {
       switch (toolName) {
@@ -52,7 +52,7 @@ export class StinaTools {
   }): Promise<ToolCallResult> {
     try {
       const calendarService = new GoogleCalendarService(this.userEmail);
-      
+
       // Get user's free/busy information
       const freeBusy = await calendarService.getFreeBusy(
         parameters.startDate,
@@ -69,12 +69,12 @@ export class StinaTools {
         success: true,
         data: {
           freeBusy,
-          events: events.map(event => ({
+          events: events.map((event) => ({
             id: event.id,
             summary: event.summary,
             start: event.start,
             end: event.end,
-            attendees: event.attendees?.map(a => a.email) || [],
+            attendees: event.attendees?.map((a) => a.email) || [],
           })),
           analysis: this.analyzeAvailability(freeBusy, events),
         },
@@ -87,11 +87,19 @@ export class StinaTools {
     }
   }
 
-  private analyzeAvailability(freeBusy: any, events: any[]): any {
+  private analyzeAvailability(
+    freeBusy: unknown,
+    events: unknown[]
+  ): {
+    totalBusyTime: number;
+    recommendedTimes: string[];
+    schedulingTips: string[];
+  } {
     // Analyze patterns in the user's schedule
     const workingHours = { start: 9, end: 17 }; // Default 9-5
-    const busySlots = freeBusy.primary?.busy || [];
-    
+    const freeBusyData = freeBusy as { primary?: { busy?: unknown[] } };
+    const busySlots = freeBusyData.primary?.busy || [];
+
     return {
       totalBusyTime: busySlots.length,
       recommendedTimes: this.suggestMeetingTimes(busySlots, workingHours),
@@ -99,53 +107,71 @@ export class StinaTools {
     };
   }
 
-  private suggestMeetingTimes(busySlots: any[], workingHours: any): string[] {
+  private suggestMeetingTimes(
+    busySlots: unknown[],
+    workingHours: { start: number; end: number }
+  ): string[] {
     // Simple algorithm to suggest meeting times
     const suggestions = [];
-    
+
     // Morning slots
     if (busySlots.length === 0 || !this.hasConflict(busySlots, 10, 11)) {
       suggestions.push('10:00 AM - Good for focused meetings');
     }
-    
+
     // Afternoon slots
     if (!this.hasConflict(busySlots, 14, 15)) {
       suggestions.push('2:00 PM - Post-lunch energy');
     }
-    
+
     // Late afternoon
     if (!this.hasConflict(busySlots, 16, 17)) {
       suggestions.push('4:00 PM - End of day wrap-up');
     }
-    
+
     return suggestions;
   }
 
-  private hasConflict(busySlots: any[], startHour: number, endHour: number): boolean {
+  private hasConflict(
+    busySlots: unknown[],
+    startHour: number,
+    endHour: number
+  ): boolean {
     // Simplified conflict detection
-    return busySlots.some((slot: any) => {
-      const slotStart = new Date(slot.start).getHours();
-      const slotEnd = new Date(slot.end).getHours();
-      return (slotStart < endHour && slotEnd > startHour);
+    return busySlots.some((slot: unknown) => {
+      const slotData = slot as { start?: string; end?: string };
+      if (!slotData.start || !slotData.end) return false;
+      const slotStart = new Date(slotData.start).getHours();
+      const slotEnd = new Date(slotData.end).getHours();
+      return slotStart < endHour && slotEnd > startHour;
     });
   }
 
-  private generateSchedulingTips(events: any[]): string[] {
+  private generateSchedulingTips(events: unknown[]): string[] {
     const tips = [];
-    
+
     if (events.length > 5) {
-      tips.push('Your schedule is quite busy. Consider shorter meetings or combining related topics.');
+      tips.push(
+        'Your schedule is quite busy. Consider shorter meetings or combining related topics.'
+      );
     }
-    
-    const hasEarlyMeetings = events.some(event => {
-      const hour = new Date(event.start?.dateTime || event.start?.date).getHours();
+
+    const hasEarlyMeetings = events.some((event) => {
+      const eventObj = event as {
+        start?: { dateTime?: string; date?: string };
+      };
+      const hour = new Date(
+        eventObj.start?.dateTime || eventObj.start?.date || ''
+      ).getHours();
       return hour < 9;
     });
-    
+
     if (hasEarlyMeetings) {
-      tips.push('You have early meetings scheduled. Consider maintaining consistent wake times.');
+      tips.push(
+        'You have early meetings scheduled. Consider maintaining consistent wake times.'
+      );
     }
-    
+
     return tips;
   }
 
@@ -185,12 +211,16 @@ export class StinaTools {
   private getWeatherRecommendation(condition: string): string {
     const recommendations: Record<string, string> = {
       'Partly cloudy': 'Good weather for outdoor meetings or walking meetings.',
-      'Sunny': 'Perfect for outdoor venues or meetings with outdoor seating.',
-      'Rainy': 'Recommend indoor venues. Consider virtual meetings if travel is involved.',
-      'Stormy': 'Strong recommendation for virtual meetings or postponement.',
+      Sunny: 'Perfect for outdoor venues or meetings with outdoor seating.',
+      Rainy:
+        'Recommend indoor venues. Consider virtual meetings if travel is involved.',
+      Stormy: 'Strong recommendation for virtual meetings or postponement.',
     };
 
-    return recommendations[condition] || 'Check weather conditions for meeting planning.';
+    return (
+      recommendations[condition] ||
+      'Check weather conditions for meeting planning.'
+    );
   }
 
   private async findNearbyVenues(parameters: {
@@ -209,7 +239,10 @@ export class StinaTools {
           location: parameters.location,
           type: parameters.type,
           venues,
-          recommendations: this.generateVenueRecommendations(venues, parameters.type),
+          recommendations: this.generateVenueRecommendations(
+            venues,
+            parameters.type
+          ),
         },
       };
     } catch (error) {
@@ -230,7 +263,16 @@ export class StinaTools {
     distance: string;
     features: string[];
   }> {
-    const venueMap: Record<string, any[]> = {
+    const venueMap: Record<
+      string,
+      Array<{
+        name: string;
+        address: string;
+        rating: number;
+        distance: string;
+        features: string[];
+      }>
+    > = {
       cafe: [
         {
           name: 'The Coffee Corner',
@@ -253,7 +295,12 @@ export class StinaTools {
           address: '789 Corporate Blvd, ' + location,
           rating: 4.3,
           distance: '0.3 km',
-          features: ['Private dining', 'Business-friendly', 'Parking', 'Quick service'],
+          features: [
+            'Private dining',
+            'Business-friendly',
+            'Parking',
+            'Quick service',
+          ],
         },
       ],
       meeting_room: [
@@ -279,19 +326,34 @@ export class StinaTools {
     return venueMap[type] || [];
   }
 
-  private generateVenueRecommendations(venues: any[], type: string): string[] {
+  private generateVenueRecommendations(
+    venues: Array<{
+      name: string;
+      address: string;
+      rating: number;
+      distance: string;
+      features: string[];
+    }>,
+    type: string
+  ): string[] {
     const recommendations = [];
 
     if (venues.length === 0) {
-      recommendations.push(`No ${type} venues found. Consider virtual meeting or different location.`);
+      recommendations.push(
+        `No ${type} venues found. Consider virtual meeting or different location.`
+      );
       return recommendations;
     }
 
     const topVenue = venues.sort((a, b) => b.rating - a.rating)[0];
-    recommendations.push(`Top recommended: ${topVenue.name} (${topVenue.rating}★)`);
+    recommendations.push(
+      `Top recommended: ${topVenue.name} (${topVenue.rating}★)`
+    );
 
     if (type === 'cafe') {
-      recommendations.push('For coffee meetings, arrive early to secure a quiet table.');
+      recommendations.push(
+        'For coffee meetings, arrive early to secure a quiet table.'
+      );
       recommendations.push('Consider noise levels for important discussions.');
     } else if (type === 'restaurant') {
       recommendations.push('Make reservations in advance for business meals.');
@@ -325,7 +387,7 @@ export class StinaTools {
       }
 
       const contactData = contactDoc.data() as ContactInfo;
-      
+
       return {
         success: true,
         data: {
@@ -345,7 +407,9 @@ export class StinaTools {
     const recommendations = [];
 
     if (contact.preferences?.meetingType) {
-      recommendations.push(`Preferred meeting type: ${contact.preferences.meetingType}`);
+      recommendations.push(
+        `Preferred meeting type: ${contact.preferences.meetingType}`
+      );
     }
 
     if (contact.preferences?.workingHours) {
@@ -355,15 +419,19 @@ export class StinaTools {
 
     if (contact.pastMeetings && contact.pastMeetings.length > 0) {
       const recentMeeting = contact.pastMeetings[0];
-      recommendations.push(`Last meeting: ${recentMeeting.type} on ${recentMeeting.date}`);
-      
+      recommendations.push(
+        `Last meeting: ${recentMeeting.type} on ${recentMeeting.date}`
+      );
+
       if (recentMeeting.location) {
         recommendations.push(`Previous location: ${recentMeeting.location}`);
       }
     }
 
     if (recommendations.length === 0) {
-      recommendations.push('No specific preferences recorded. Consider asking for preferences.');
+      recommendations.push(
+        'No specific preferences recorded. Consider asking for preferences.'
+      );
     }
 
     return recommendations;
@@ -371,7 +439,7 @@ export class StinaTools {
 
   private async updateContactPreferences(parameters: {
     email: string;
-    preferences: any;
+    preferences: Record<string, unknown>;
   }): Promise<ToolCallResult> {
     try {
       await adminDb

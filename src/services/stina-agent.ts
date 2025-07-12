@@ -9,7 +9,7 @@ export interface StinaTool {
   description: string;
   input_schema: {
     type: 'object';
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required: string[];
   };
 }
@@ -143,10 +143,10 @@ export class StinaAgent {
   async initializeContext(): Promise<void> {
     // Load user preferences from database
     await this.loadUserPreferences();
-    
+
     // Load contact information
     await this.loadContacts();
-    
+
     // Get current environmental context
     await this.updateEnvironmentalContext();
   }
@@ -180,7 +180,7 @@ export class StinaAgent {
         .collection('contacts')
         .get();
 
-      this.context.contacts = contactsSnapshot.docs.map(doc => ({
+      this.context.contacts = contactsSnapshot.docs.map((doc) => ({
         ...doc.data(),
         email: doc.id,
       })) as ContactInfo[];
@@ -212,7 +212,7 @@ export class StinaAgent {
 
   private async processEmail(email: EmailContext): Promise<void> {
     const meetingIntent = await this.analyzeMeetingIntent(email);
-    
+
     if (meetingIntent) {
       await this.handleMeetingRequest(email, meetingIntent);
     }
@@ -223,7 +223,7 @@ export class StinaAgent {
   ): Promise<MeetingIntent | null> {
     const tools = this.getTools();
     const stinaTools = new StinaTools(this.userEmail);
-    
+
     let messages: Anthropic.Messages.MessageParam[] = [
       {
         role: 'user',
@@ -262,7 +262,7 @@ export class StinaAgent {
         if (content.type === 'tool_use') {
           const toolResult = await stinaTools.executeToolCall(
             content.name,
-            content.input as Record<string, any>
+            content.input as Record<string, unknown>
           );
 
           messages.push({
@@ -291,7 +291,8 @@ export class StinaAgent {
           messages: messages.concat([
             {
               role: 'user',
-              content: 'Based on the tool results, provide the final meeting intent as JSON or "NOT_MEETING_REQUEST".',
+              content:
+                'Based on the tool results, provide the final meeting intent as JSON or "NOT_MEETING_REQUEST".',
             },
           ]),
         });
@@ -324,7 +325,7 @@ export class StinaAgent {
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const intent = JSON.parse(jsonMatch[0]);
-        
+
         // Validate required fields
         if (intent.participants && intent.duration && intent.type) {
           return intent as MeetingIntent;
@@ -354,7 +355,7 @@ export class StinaAgent {
     if (bestSlot) {
       // Create calendar event
       await this.createMeetingEvent(email, intent, bestSlot);
-      
+
       // Update contact context
       await this.updateContactContext(intent.participants, email);
     }
@@ -364,9 +365,12 @@ export class StinaAgent {
     participants: string[],
     preferredTimes: string[],
     duration: number
-  ): Promise<any> {
+  ): Promise<{
+    user: unknown;
+    participants: Record<string, unknown>;
+  }> {
     const calendarService = new GoogleCalendarService(this.userEmail);
-    
+
     // Check user's availability
     const userAvailability = await calendarService.getFreeBusy(
       new Date().toISOString(),
@@ -381,12 +385,18 @@ export class StinaAgent {
   }
 
   private async findBestMeetingSlot(
-    availability: any,
+    availability: {
+      user: unknown;
+      participants: Record<string, unknown>;
+    },
     intent: MeetingIntent
-  ): Promise<any> {
+  ): Promise<{
+    startTime: string;
+    endTime: string;
+  } | null> {
     // AI-powered slot finding based on availability and preferences
     const tools = this.getTools();
-    
+
     const message = await this.anthropic.messages.create({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 1000,
@@ -422,10 +432,13 @@ export class StinaAgent {
   private async createMeetingEvent(
     email: EmailContext,
     intent: MeetingIntent,
-    slot: any
+    slot: {
+      startTime: string;
+      endTime: string;
+    }
   ): Promise<void> {
     const calendarService = new GoogleCalendarService(this.userEmail);
-    
+
     // Create event based on intent and slot
     const event = {
       summary: email.subject,
@@ -438,7 +451,7 @@ export class StinaAgent {
         dateTime: slot.endTime,
         timeZone: this.context.preferences.timeZone,
       },
-      attendees: intent.participants.map(email => ({ email })),
+      attendees: intent.participants.map((email) => ({ email })),
       location: intent.location,
     };
 
@@ -481,7 +494,10 @@ export class StinaAgent {
         input_schema: {
           type: 'object',
           properties: {
-            startDate: { type: 'string', description: 'Start date in ISO format' },
+            startDate: {
+              type: 'string',
+              description: 'Start date in ISO format',
+            },
             endDate: { type: 'string', description: 'End date in ISO format' },
             participants: {
               type: 'array',
@@ -494,28 +510,39 @@ export class StinaAgent {
       },
       {
         name: 'get_weather_info',
-        description: 'Get current weather information for location-based meeting planning',
+        description:
+          'Get current weather information for location-based meeting planning',
         input_schema: {
           type: 'object',
           properties: {
-            location: { type: 'string', description: 'Location to get weather for' },
+            location: {
+              type: 'string',
+              description: 'Location to get weather for',
+            },
           },
           required: ['location'],
         },
       },
       {
         name: 'find_nearby_venues',
-        description: 'Find cafes, restaurants, or meeting venues near a location',
+        description:
+          'Find cafes, restaurants, or meeting venues near a location',
         input_schema: {
           type: 'object',
           properties: {
-            location: { type: 'string', description: 'Location to search near' },
+            location: {
+              type: 'string',
+              description: 'Location to search near',
+            },
             type: {
               type: 'string',
               enum: ['cafe', 'restaurant', 'meeting_room', 'coworking'],
               description: 'Type of venue to find',
             },
-            radius: { type: 'number', description: 'Search radius in kilometers' },
+            radius: {
+              type: 'number',
+              description: 'Search radius in kilometers',
+            },
           },
           required: ['location', 'type'],
         },
@@ -549,7 +576,9 @@ export class StinaAgent {
     ];
   }
 
-  async saveUserPreferences(preferences: Partial<UserPreferences>): Promise<void> {
+  async saveUserPreferences(
+    preferences: Partial<UserPreferences>
+  ): Promise<void> {
     try {
       await adminDb
         .collection('users')
@@ -561,7 +590,7 @@ export class StinaAgent {
           },
           updatedAt: new Date().toISOString(),
         });
-      
+
       this.context.preferences = {
         ...this.context.preferences,
         ...preferences,

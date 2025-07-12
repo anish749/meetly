@@ -2,20 +2,26 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { 
-  RefreshCw, 
-  Mail, 
-  Calendar, 
-  Settings, 
-  Brain, 
-  CheckCircle, 
+import {
+  RefreshCw,
+  Mail,
+  Calendar,
+  Settings,
+  Brain,
+  CheckCircle,
   AlertCircle,
-  Clock 
+  Clock,
 } from 'lucide-react';
 
 interface EmailSummary {
@@ -54,7 +60,7 @@ export function StinaDashboard() {
       const response = await fetch('/api/stina/process-emails', {
         method: 'GET',
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setUnreadEmails(data.emails || []);
@@ -86,7 +92,7 @@ export function StinaDashboard() {
       const response = await fetch('/api/stina/process-emails', {
         method: 'POST',
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         toast.success(data.message);
@@ -116,7 +122,7 @@ export function StinaDashboard() {
       });
 
       if (response.ok) {
-        setPreferences(prev => ({ ...prev, ...newPrefs }));
+        setPreferences((prev) => ({ ...prev, ...newPrefs }));
         toast.success('Preferences updated');
       } else {
         toast.error('Failed to update preferences');
@@ -150,7 +156,8 @@ export function StinaDashboard() {
             Email Processing
           </CardTitle>
           <CardDescription>
-            Process incoming emails for meeting requests and scheduling opportunities
+            Process incoming emails for meeting requests and scheduling
+            opportunities
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -172,7 +179,9 @@ export function StinaDashboard() {
                 onClick={fetchEmailStatus}
                 disabled={isLoading}
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`}
+                />
                 Refresh
               </Button>
               <Button
@@ -199,11 +208,18 @@ export function StinaDashboard() {
               <Separator />
               <div className="space-y-2">
                 {unreadEmails.slice(0, 3).map((email) => (
-                  <div key={email.id} className="flex items-center gap-3 p-2 bg-muted/50 rounded">
+                  <div
+                    key={email.id}
+                    className="flex items-center gap-3 p-2 bg-muted/50 rounded"
+                  >
                     <Mail className="w-4 h-4 text-muted-foreground" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{email.subject}</p>
-                      <p className="text-xs text-muted-foreground">From: {email.from}</p>
+                      <p className="text-sm font-medium truncate">
+                        {email.subject}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        From: {email.from}
+                      </p>
                     </div>
                     <Clock className="w-4 h-4 text-muted-foreground" />
                   </div>
@@ -238,9 +254,7 @@ export function StinaDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">0</div>
-                <p className="text-xs text-muted-foreground">
-                  This week
-                </p>
+                <p className="text-xs text-muted-foreground">This week</p>
               </CardContent>
             </Card>
 
@@ -253,9 +267,7 @@ export function StinaDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">0</div>
-                <p className="text-xs text-muted-foreground">
-                  Total processed
-                </p>
+                <p className="text-xs text-muted-foreground">Total processed</p>
               </CardContent>
             </Card>
 
@@ -268,9 +280,7 @@ export function StinaDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">--</div>
-                <p className="text-xs text-muted-foreground">
-                  No data yet
-                </p>
+                <p className="text-xs text-muted-foreground">No data yet</p>
               </CardContent>
             </Card>
           </div>
@@ -289,7 +299,8 @@ export function StinaDashboard() {
                   <div>
                     <h4 className="font-medium">Email Monitoring</h4>
                     <p className="text-sm text-muted-foreground">
-                      Stina monitors emails sent to your connected MailSlurp inbox and identifies meeting requests.
+                      Stina monitors emails sent to your connected MailSlurp
+                      inbox and identifies meeting requests.
                     </p>
                   </div>
                 </div>
@@ -298,7 +309,8 @@ export function StinaDashboard() {
                   <div>
                     <h4 className="font-medium">AI Analysis</h4>
                     <p className="text-sm text-muted-foreground">
-                      Uses Claude AI to understand meeting context, participants, and preferences.
+                      Uses Claude AI to understand meeting context,
+                      participants, and preferences.
                     </p>
                   </div>
                 </div>
@@ -307,7 +319,8 @@ export function StinaDashboard() {
                   <div>
                     <h4 className="font-medium">Smart Scheduling</h4>
                     <p className="text-sm text-muted-foreground">
-                      Automatically checks calendar availability and creates optimized meeting slots.
+                      Automatically checks calendar availability and creates
+                      optimized meeting slots.
                     </p>
                   </div>
                 </div>
@@ -330,14 +343,27 @@ export function StinaDashboard() {
             <CardContent className="space-y-4">
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium">Default Meeting Type</label>
+                  <label className="text-sm font-medium">
+                    Default Meeting Type
+                  </label>
                   <div className="flex gap-2 mt-2">
                     {['virtual', 'in-person', 'hybrid'].map((type) => (
                       <Button
                         key={type}
-                        variant={preferences.defaultMeetingType === type ? 'default' : 'outline'}
+                        variant={
+                          preferences.defaultMeetingType === type
+                            ? 'default'
+                            : 'outline'
+                        }
                         size="sm"
-                        onClick={() => updatePreferences({ defaultMeetingType: type as any })}
+                        onClick={() =>
+                          updatePreferences({
+                            defaultMeetingType: type as
+                              | 'in-person'
+                              | 'virtual'
+                              | 'hybrid',
+                          })
+                        }
                       >
                         {type.charAt(0).toUpperCase() + type.slice(1)}
                       </Button>
@@ -349,34 +375,54 @@ export function StinaDashboard() {
                   <label className="text-sm font-medium">Working Hours</label>
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <div>
-                      <label className="text-xs text-muted-foreground">Start</label>
+                      <label className="text-xs text-muted-foreground">
+                        Start
+                      </label>
                       <input
                         type="time"
                         value={preferences.workingHours?.start || '09:00'}
-                        onChange={(e) => updatePreferences({
-                          workingHours: {
-                            ...preferences.workingHours,
-                            start: e.target.value,
-                            end: preferences.workingHours?.end || '17:00',
-                            days: preferences.workingHours?.days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-                          }
-                        })}
+                        onChange={(e) =>
+                          updatePreferences({
+                            workingHours: {
+                              ...preferences.workingHours,
+                              start: e.target.value,
+                              end: preferences.workingHours?.end || '17:00',
+                              days: preferences.workingHours?.days || [
+                                'monday',
+                                'tuesday',
+                                'wednesday',
+                                'thursday',
+                                'friday',
+                              ],
+                            },
+                          })
+                        }
                         className="w-full p-2 border rounded text-sm"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground">End</label>
+                      <label className="text-xs text-muted-foreground">
+                        End
+                      </label>
                       <input
                         type="time"
                         value={preferences.workingHours?.end || '17:00'}
-                        onChange={(e) => updatePreferences({
-                          workingHours: {
-                            ...preferences.workingHours,
-                            start: preferences.workingHours?.start || '09:00',
-                            end: e.target.value,
-                            days: preferences.workingHours?.days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-                          }
-                        })}
+                        onChange={(e) =>
+                          updatePreferences({
+                            workingHours: {
+                              ...preferences.workingHours,
+                              start: preferences.workingHours?.start || '09:00',
+                              end: e.target.value,
+                              days: preferences.workingHours?.days || [
+                                'monday',
+                                'tuesday',
+                                'wednesday',
+                                'thursday',
+                                'friday',
+                              ],
+                            },
+                          })
+                        }
                         className="w-full p-2 border rounded text-sm"
                       />
                     </div>
@@ -384,11 +430,17 @@ export function StinaDashboard() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">Meeting Buffer (minutes)</label>
+                  <label className="text-sm font-medium">
+                    Meeting Buffer (minutes)
+                  </label>
                   <input
                     type="number"
                     value={preferences.meetingBuffer || 15}
-                    onChange={(e) => updatePreferences({ meetingBuffer: parseInt(e.target.value) })}
+                    onChange={(e) =>
+                      updatePreferences({
+                        meetingBuffer: parseInt(e.target.value),
+                      })
+                    }
                     className="w-full p-2 border rounded text-sm mt-2"
                     min="0"
                     max="60"
@@ -407,13 +459,17 @@ export function StinaDashboard() {
             <CardHeader>
               <CardTitle>Contact Management</CardTitle>
               <CardDescription>
-                Stina learns from your interactions to better understand contact preferences
+                Stina learns from your interactions to better understand contact
+                preferences
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-center text-muted-foreground py-8">
                 <p>No contact data available yet.</p>
-                <p className="text-sm">Contact preferences will appear here after Stina processes emails.</p>
+                <p className="text-sm">
+                  Contact preferences will appear here after Stina processes
+                  emails.
+                </p>
               </div>
             </CardContent>
           </Card>
