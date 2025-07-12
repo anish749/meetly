@@ -4,7 +4,6 @@ export const FIREBASE_COLLECTIONS = {
   MEETING_REQUESTS: 'meetingRequests',
   // Sub-collections under users
   CONTACTS: 'contacts',
-  PREFERENCES: 'preferences',
   EMAIL_PROCESSING_RESULTS: 'email_processing_results',
 } as const;
 
@@ -19,8 +18,6 @@ export const getCollectionPath = {
     `${FIREBASE_COLLECTIONS.USERS}/${userEmail}/${FIREBASE_COLLECTIONS.CONTACTS}`,
   contact: (userEmail: string, contactEmail: string) =>
     `${FIREBASE_COLLECTIONS.USERS}/${userEmail}/${FIREBASE_COLLECTIONS.CONTACTS}/${contactEmail}`,
-  preferences: (userEmail: string) =>
-    `${FIREBASE_COLLECTIONS.USERS}/${userEmail}/${FIREBASE_COLLECTIONS.PREFERENCES}`,
   emailProcessingResults: (userEmail: string) =>
     `${FIREBASE_COLLECTIONS.USERS}/${userEmail}/${FIREBASE_COLLECTIONS.EMAIL_PROCESSING_RESULTS}`,
   meetingRequests: () => FIREBASE_COLLECTIONS.MEETING_REQUESTS,
@@ -50,7 +47,25 @@ export interface UserDocument {
   }>;
   createdAt: string; // ISO string
   updatedAt: string; // ISO string
-  stinaPreferences?: string; // Free-form text preferences
+  stinaPreferences?: {
+    // Structured preferences for Stina
+    defaultMeetingType?: 'in-person' | 'virtual' | 'hybrid';
+    workingHours?: {
+      start: string;
+      end: string;
+      days: string[];
+    };
+    timeZone?: string;
+    preferredLocations?: string[];
+    foodPreferences?: string[];
+    meetingBuffer?: number;
+    // Free-form text preferences from preferences page
+    freeformPreferences?: string;
+    wordCount?: number;
+    createdAt?: string;
+    updatedAt?: string;
+    version?: number;
+  };
 }
 
 // Contact Document (stored in 'users/{email}/contacts' sub-collection)
@@ -74,14 +89,6 @@ export interface ContactDocument {
     title: string;
   }>;
   createdAt: string; // ISO string
-  updatedAt: string; // ISO string
-}
-
-// Preferences Document (stored in 'users/{email}/preferences' sub-collection)
-export interface PreferencesDocument {
-  id: string; // Usually 'primary'
-  preferences: string; // Free-form text
-  version: number;
   updatedAt: string; // ISO string
 }
 
@@ -121,6 +128,7 @@ export const isContactDocument = (doc: unknown): doc is ContactDocument => {
 import {
   type DocumentData,
   type QueryDocumentSnapshot,
+  type FirestoreDataConverter,
 } from 'firebase-admin/firestore';
 
 export const firestoreConverters = {
@@ -131,7 +139,7 @@ export const firestoreConverters = {
     fromFirestore(snapshot: QueryDocumentSnapshot): UserDocument {
       return snapshot.data() as UserDocument;
     },
-  },
+  } as FirestoreDataConverter<UserDocument>,
   contact: {
     toFirestore(contact: ContactDocument): DocumentData {
       return contact;
@@ -139,15 +147,7 @@ export const firestoreConverters = {
     fromFirestore(snapshot: QueryDocumentSnapshot): ContactDocument {
       return snapshot.data() as ContactDocument;
     },
-  },
-  preferences: {
-    toFirestore(prefs: PreferencesDocument): DocumentData {
-      return prefs;
-    },
-    fromFirestore(snapshot: QueryDocumentSnapshot): PreferencesDocument {
-      return snapshot.data() as PreferencesDocument;
-    },
-  },
+  } as FirestoreDataConverter<ContactDocument>,
   emailProcessingResult: {
     toFirestore(result: EmailProcessingResultDocument): DocumentData {
       return result;
@@ -157,7 +157,7 @@ export const firestoreConverters = {
     ): EmailProcessingResultDocument {
       return snapshot.data() as EmailProcessingResultDocument;
     },
-  },
+  } as FirestoreDataConverter<EmailProcessingResultDocument>,
 };
 
 // Re-export meeting request types from the correct source

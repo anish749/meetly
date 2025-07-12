@@ -363,7 +363,7 @@ Please analyze this email and take appropriate actions according to your workflo
   }
 
   private buildContextString(): string {
-    return `
+    const baseContext = `
 • Working hours: ${this.context.preferences.workingHours.start} - ${this.context.preferences.workingHours.end}
 • Time zone: ${this.context.preferences.timeZone}
 • Default meeting type: ${this.context.preferences.defaultMeetingType}
@@ -373,6 +373,20 @@ Please analyze this email and take appropriate actions according to your workflo
 • Food preferences: ${this.context.preferences.foodPreferences?.join(', ') || 'None specified'}
 • Known contacts: ${this.context.contacts.length} contacts in database
 • Current location: ${this.context.environmental.location?.city || 'Unknown'}, ${this.context.environmental.location?.country || 'Unknown'}`;
+
+    // Include freeform preferences if available
+    interface ExtendedPreferences extends UserPreferences {
+      freeformPreferences?: string;
+    }
+    const extendedPrefs = this.context.preferences as ExtendedPreferences;
+    if (extendedPrefs.freeformPreferences) {
+      return (
+        baseContext +
+        `\n\nAdditional preferences:\n${extendedPrefs.freeformPreferences}`
+      );
+    }
+
+    return baseContext;
   }
 
   private async storeProcessingResult(
@@ -461,14 +475,22 @@ If this is a meeting request, extract the details. If not, set is_meeting_reques
   }
 
   async saveUserPreferences(
-    preferences: Partial<UserPreferences>
+    preferences: Partial<UserPreferences> & { freeformPreferences?: string }
   ): Promise<void> {
     try {
+      const currentUserDoc = await adminDb
+        .collection('users')
+        .doc(this.userEmail)
+        .get();
+
+      const currentStinaPrefs = currentUserDoc.data()?.stinaPreferences || {};
+
       await adminDb
         .collection('users')
         .doc(this.userEmail)
         .update({
           stinaPreferences: {
+            ...currentStinaPrefs,
             ...this.context.preferences,
             ...preferences,
           },
