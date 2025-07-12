@@ -3,7 +3,7 @@ import { AuthService } from '@/services/auth-service';
 import { adminDb } from '@/config/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const user = await AuthService.getCurrentUser();
 

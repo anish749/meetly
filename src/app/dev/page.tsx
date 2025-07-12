@@ -2,9 +2,17 @@
 
 import { useState } from 'react';
 
+interface Email {
+  id: string;
+  subject?: string;
+  from: string;
+  body: string;
+  createdAt: string;
+}
+
 export default function DevPage() {
   const [loading, setLoading] = useState(false);
-  const [emails, setEmails] = useState<any[]>([]);
+  const [emails, setEmails] = useState<Email[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const fetchEmails = async () => {

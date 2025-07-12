@@ -23,7 +23,7 @@ export function PreferencesForm() {
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSavedContent, setLastSavedContent] = useState('');
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout>();
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load existing preferences
   useEffect(() => {
@@ -68,34 +68,37 @@ export function PreferencesForm() {
     triggerAutoSave();
   };
 
-  const savePreferences = async (showToast = true) => {
-    setIsSaving(true);
-    try {
-      const response = await fetch('/api/preferences', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content: preferences }),
-      });
+  const savePreferences = useCallback(
+    async (showToast = true) => {
+      setIsSaving(true);
+      try {
+        const response = await fetch('/api/preferences', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ content: preferences }),
+        });
 
-      if (response.ok) {
-        if (showToast) {
-          toast.success('Preferences saved successfully');
+        if (response.ok) {
+          if (showToast) {
+            toast.success('Preferences saved successfully');
+          }
+          setHasUnsavedChanges(false);
+          setLastSavedContent(preferences);
+        } else {
+          const error = await response.json();
+          toast.error(error.error || 'Failed to save preferences');
         }
-        setHasUnsavedChanges(false);
-        setLastSavedContent(preferences);
-      } else {
-        const error = await response.json();
-        toast.error(error.error || 'Failed to save preferences');
+      } catch (error) {
+        console.error('Error saving preferences:', error);
+        toast.error('Failed to save preferences');
+      } finally {
+        setIsSaving(false);
       }
-    } catch (error) {
-      console.error('Error saving preferences:', error);
-      toast.error('Failed to save preferences');
-    } finally {
-      setIsSaving(false);
-    }
-  };
+    },
+    [preferences]
+  );
 
   // Auto-save functionality
   const triggerAutoSave = useCallback(() => {
@@ -110,7 +113,7 @@ export function PreferencesForm() {
         savePreferences(false); // Don't show toast for auto-save
       }
     }, 3000);
-  }, [hasUnsavedChanges, preferences]);
+  }, [hasUnsavedChanges, savePreferences]);
 
   // Keyboard shortcut for saving
   useEffect(() => {
@@ -125,7 +128,7 @@ export function PreferencesForm() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasUnsavedChanges, isSaving, preferences]);
+  }, [hasUnsavedChanges, isSaving, savePreferences]);
 
   // Cleanup auto-save timeout on unmount
   useEffect(() => {

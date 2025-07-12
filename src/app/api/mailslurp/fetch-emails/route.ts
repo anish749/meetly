@@ -17,8 +17,8 @@ export async function POST() {
     const mailslurp = new MailSlurp({ apiKey });
 
     // Fetch unread emails
-    const emails = await mailslurp.inboxController.getInboxEmailsPaginated({
-      inboxId: INBOX_ID,
+    const emails = await mailslurp.emailController.getEmailsPaginated({
+      inboxId: [INBOX_ID],
       unreadOnly: true,
     });
 
