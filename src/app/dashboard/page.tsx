@@ -21,10 +21,36 @@ interface CalendarEvent {
   };
 }
 
+interface Contact {
+  resourceName?: string;
+  displayName?: string;
+  givenName?: string;
+  familyName?: string;
+  emailAddresses?: Array<{
+    value: string;
+    type?: string;
+    formattedType?: string;
+  }>;
+  phoneNumbers?: Array<{
+    value: string;
+    type?: string;
+    formattedType?: string;
+  }>;
+  organizations?: Array<{
+    name?: string;
+    title?: string;
+  }>;
+  photos?: Array<{
+    url: string;
+  }>;
+}
+
 export default function DashboardPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -36,6 +62,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchEvents();
+      fetchContacts();
     }
   }, [isAuthenticated]);
 
@@ -51,6 +78,21 @@ export default function DashboardPage() {
       console.error('Error fetching events:', error);
     } finally {
       setLoadingEvents(false);
+    }
+  };
+
+  const fetchContacts = async () => {
+    setLoadingContacts(true);
+    try {
+      const response = await fetch('/api/contacts?pageSize=6');
+      const data = await response.json();
+      if (data.contacts) {
+        setContacts(data.contacts);
+      }
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+    } finally {
+      setLoadingContacts(false);
     }
   };
 
@@ -136,6 +178,79 @@ export default function DashboardPage() {
             ) : (
               <div className="text-center py-8 text-gray-500">
                 No upcoming events found in your calendar.
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-6 mt-6">
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium">Recent Contacts</h3>
+              <Button onClick={fetchContacts} variant="outline" size="sm">
+                Refresh
+              </Button>
+            </div>
+
+            {loadingContacts ? (
+              <div className="text-center py-8 text-gray-500">
+                Loading contacts...
+              </div>
+            ) : contacts.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {contacts.map((contact) => {
+                  const displayName = contact.displayName || 
+                    (contact.givenName || contact.familyName ? 
+                      `${contact.givenName || ''} ${contact.familyName || ''}`.trim() : 
+                      'No Name');
+                  const primaryEmail = contact.emailAddresses?.[0]?.value;
+                  const primaryPhone = contact.phoneNumbers?.[0]?.value;
+                  const organization = contact.organizations?.[0];
+                  const photo = contact.photos?.[0]?.url;
+
+                  return (
+                    <Card key={contact.resourceName} className="p-4">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0">
+                          {photo ? (
+                            <Image
+                              src={photo}
+                              alt={displayName}
+                              width={40}
+                              height={40}
+                              className="rounded-full"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                              <span className="text-sm font-medium text-gray-700">
+                                {displayName.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-sm truncate">{displayName}</h4>
+                          {primaryEmail && (
+                            <p className="text-xs text-gray-600 truncate">{primaryEmail}</p>
+                          )}
+                          {primaryPhone && (
+                            <p className="text-xs text-gray-600">{primaryPhone}</p>
+                          )}
+                          {organization && (
+                            <p className="text-xs text-gray-500 truncate">
+                              {organization.title && `${organization.title} at `}
+                              {organization.name}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                No contacts found in your Google account.
               </div>
             )}
           </div>
