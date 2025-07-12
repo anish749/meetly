@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/contexts/auth-context';
 import { PreferencesForm } from '@/components/preferences/preferences-form';
+import { CalendarManagement } from '@/components/preferences/calendar-management';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useEffect } from 'react';
@@ -67,7 +68,9 @@ export default function PreferencesPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <CalendarManagement />
+
         <Card className="p-6">
           <div className="mb-6">
             <h2 className="text-xl font-semibold mb-2">
