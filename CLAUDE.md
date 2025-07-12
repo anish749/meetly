@@ -36,6 +36,8 @@ npm run format:check # Check code formatting without changes
 
 - **AuthService** (src/services/auth-service.ts): Handles authentication, sessions, and token management
 - **GoogleCalendarService** (src/services/google-calendar-service.ts): Encapsulates all Google Calendar API operations
+- **StinaAgent** (src/services/stina-agent.ts): AI executive assistant for automated meeting scheduling via email processing
+- **StinaTools** (src/services/stina-tools.ts): Tool implementations for calendar, weather, venue, and contact management
 
 ### Data Storage
 
@@ -53,6 +55,7 @@ npm run format:check # Check code formatting without changes
   - `/api/calendar/*` - Calendar operations
   - `/api/preferences/*` - User preferences
   - `/api/mailslurp/*` - Email integration
+  - `/api/stina/*` - Stina AI agent operations (email processing, preferences)
 
 ### UI Components
 
@@ -92,6 +95,7 @@ const events = await calendarService.listEvents(calendarId);
 - Firebase: `FIREBASE_SERVICE_ACCOUNT` (base64 encoded)
 - URLs: `NEXT_PUBLIC_BASE_URL`, `MAILSLURP_API_BASE_URL`
 - MailSlurp: `MAILSLURP_API_KEY`
+- Anthropic AI: `ANTHROPIC_API_KEY` (for Stina AI agent)
 
 ## Task Completion Workflow
 

@@ -4,7 +4,6 @@ import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -25,7 +24,6 @@ export default function DashboardPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
-  const router = useRouter();
 
   // Middleware handles authentication redirect
 
@@ -67,6 +65,11 @@ export default function DashboardPage() {
               Meetly Dashboard
             </h1>
             <div className="flex items-center gap-4">
+              <Link href="/stina">
+                <Button variant="ghost" size="sm">
+                  Stina AI
+                </Button>
+              </Link>
               <Link href="/preferences">
                 <Button variant="ghost" size="sm">
                   Preferences
