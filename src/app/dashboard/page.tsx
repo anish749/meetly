@@ -65,6 +65,11 @@ export default function DashboardPage() {
               Meetly Dashboard
             </h1>
             <div className="flex items-center gap-4">
+              <Link href="/dashboard/meeting-requests">
+                <Button variant="ghost" size="sm">
+                  Meeting Requests
+                </Button>
+              </Link>
               <Link href="/stina">
                 <Button variant="ghost" size="sm">
                   Stina AI
