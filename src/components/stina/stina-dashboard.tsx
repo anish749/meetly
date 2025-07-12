@@ -21,7 +21,6 @@ import {
   Brain,
   CheckCircle,
   AlertCircle,
-  Clock,
 } from 'lucide-react';
 
 interface EmailSummary {
@@ -29,6 +28,16 @@ interface EmailSummary {
   subject: string;
   from: string;
   createdAt: string;
+}
+
+interface EmailAnalysisState {
+  [emailId: string]: {
+    isAnalyzing: boolean;
+    isProcessingWithStina: boolean;
+    analysisComplete: boolean;
+    meetingRequestId?: string;
+    error?: string;
+  };
 }
 
 interface StinaPreferences {
@@ -43,10 +52,10 @@ interface StinaPreferences {
 }
 
 export function StinaDashboard() {
-  const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [unreadEmails, setUnreadEmails] = useState<EmailSummary[]>([]);
-  const [lastProcessed, setLastProcessed] = useState<Date | null>(null);
+  const [emailAnalysisState, setEmailAnalysisState] =
+    useState<EmailAnalysisState>({});
   const [preferences, setPreferences] = useState<StinaPreferences>({});
 
   useEffect(() => {
@@ -81,31 +90,131 @@ export function StinaDashboard() {
         const data = await response.json();
         setPreferences(data.preferences || {});
       }
-    } catch (error) {
-      console.error('Error fetching preferences:', error);
+    } catch {
+      // Error fetching preferences - using default empty object
     }
   };
 
-  const processEmails = async () => {
+  const analyzeEmail = async (emailId: string) => {
     try {
-      setIsProcessing(true);
-      const response = await fetch('/api/stina/process-emails', {
+      // Update state to show analysis in progress
+      setEmailAnalysisState((prev) => ({
+        ...prev,
+        [emailId]: {
+          ...prev[emailId],
+          isAnalyzing: true,
+          error: undefined,
+        },
+      }));
+
+      const response = await fetch('/api/emails/analyze', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ emailId }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        toast.success(data.message);
-        setLastProcessed(new Date());
-        setUnreadEmails([]);
+        setEmailAnalysisState((prev) => ({
+          ...prev,
+          [emailId]: {
+            ...prev[emailId],
+            isAnalyzing: false,
+            analysisComplete: true,
+            meetingRequestId: data.meetingRequestId,
+          },
+        }));
+
+        toast.success(
+          'Email analyzed successfully! Ready for Stina processing.'
+        );
+
+        // Automatically process with Stina after analysis
+        await processWithStina(emailId, data.meetingRequestId);
       } else {
         const errorData = await response.json();
-        toast.error(errorData.error || 'Failed to process emails');
+        setEmailAnalysisState((prev) => ({
+          ...prev,
+          [emailId]: {
+            ...prev[emailId],
+            isAnalyzing: false,
+            error: errorData.error || 'Analysis failed',
+          },
+        }));
+        toast.error(errorData.error || 'Failed to analyze email');
       }
     } catch {
-      toast.error('Error processing emails');
-    } finally {
-      setIsProcessing(false);
+      setEmailAnalysisState((prev) => ({
+        ...prev,
+        [emailId]: {
+          ...prev[emailId],
+          isAnalyzing: false,
+          error: 'Network error',
+        },
+      }));
+      toast.error('Error analyzing email');
+    }
+  };
+
+  const processWithStina = async (
+    emailId: string,
+    meetingRequestId: string
+  ) => {
+    try {
+      setEmailAnalysisState((prev) => ({
+        ...prev,
+        [emailId]: {
+          ...prev[emailId],
+          isProcessingWithStina: true,
+        },
+      }));
+
+      const response = await fetch('/api/meeting-requests/process-with-stina', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ meetingRequestId }),
+      });
+
+      if (response.ok) {
+        await response.json();
+        setEmailAnalysisState((prev) => ({
+          ...prev,
+          [emailId]: {
+            ...prev[emailId],
+            isProcessingWithStina: false,
+          },
+        }));
+
+        toast.success('Email processed with Stina successfully!');
+
+        // Remove the email from unread list as it's been processed
+        setUnreadEmails((prev) => prev.filter((email) => email.id !== emailId));
+      } else {
+        const errorData = await response.json();
+        setEmailAnalysisState((prev) => ({
+          ...prev,
+          [emailId]: {
+            ...prev[emailId],
+            isProcessingWithStina: false,
+            error: errorData.error || 'Stina processing failed',
+          },
+        }));
+        toast.error(errorData.error || 'Failed to process with Stina');
+      }
+    } catch {
+      setEmailAnalysisState((prev) => ({
+        ...prev,
+        [emailId]: {
+          ...prev[emailId],
+          isProcessingWithStina: false,
+          error: 'Network error during Stina processing',
+        },
+      }));
+      toast.error('Error processing with Stina');
     }
   };
 
@@ -166,70 +275,99 @@ export function StinaDashboard() {
               <p className="text-sm font-medium">
                 {unreadEmails.length} total emails
               </p>
-              {lastProcessed && (
-                <p className="text-xs text-muted-foreground">
-                  Last processed: {lastProcessed.toLocaleString()}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Click &quot;Analyze&quot; to process individual emails with AI
+              </p>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchEmailStatus}
-                disabled={isLoading}
-              >
-                <RefreshCw
-                  className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`}
-                />
-                Refresh
-              </Button>
-              <Button
-                onClick={processEmails}
-                disabled={isProcessing || unreadEmails.length === 0}
-              >
-                {isProcessing ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Brain className="w-4 h-4 mr-2" />
-                    Process Emails
-                  </>
-                )}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchEmailStatus}
+              disabled={isLoading}
+            >
+              <RefreshCw
+                className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`}
+              />
+              Refresh
+            </Button>
           </div>
 
           {unreadEmails.length > 0 && (
             <div className="space-y-2">
               <Separator />
-              <div className="space-y-2">
-                {unreadEmails.slice(0, 3).map((email) => (
-                  <div
-                    key={email.id}
-                    className="flex items-center gap-3 p-2 bg-muted/50 rounded"
-                  >
-                    <Mail className="w-4 h-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {email.subject}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        From: {email.from}
-                      </p>
+              <div className="space-y-3">
+                {unreadEmails.map((email) => {
+                  const analysisState = emailAnalysisState[email.id] || {};
+                  const isProcessing =
+                    analysisState.isAnalyzing ||
+                    analysisState.isProcessingWithStina;
+
+                  return (
+                    <div
+                      key={email.id}
+                      className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border"
+                    >
+                      <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {email.subject || 'No Subject'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          From: {email.from}
+                        </p>
+                        {analysisState.error && (
+                          <p className="text-xs text-red-600 mt-1">
+                            {analysisState.error}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {analysisState.isAnalyzing && (
+                          <Badge variant="secondary" className="text-xs">
+                            <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                            Analyzing...
+                          </Badge>
+                        )}
+                        {analysisState.isProcessingWithStina && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Brain className="w-3 h-3 mr-1" />
+                            Processing with Stina...
+                          </Badge>
+                        )}
+                        {!isProcessing && !analysisState.analysisComplete && (
+                          <Button
+                            size="sm"
+                            onClick={() => analyzeEmail(email.id)}
+                            className="h-8 px-3"
+                          >
+                            <Brain className="w-3 h-3 mr-1" />
+                            Analyze
+                          </Button>
+                        )}
+                        {analysisState.analysisComplete && !isProcessing && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs bg-green-50"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1 text-green-600" />
+                            Complete
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                ))}
-                {unreadEmails.length > 3 && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    +{unreadEmails.length - 3} more emails
-                  </p>
-                )}
+                  );
+                })}
               </div>
+            </div>
+          )}
+
+          {unreadEmails.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              <Mail className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No unread emails</p>
+              <p className="text-xs">
+                New emails will appear here for analysis
+              </p>
             </div>
           )}
         </CardContent>
@@ -300,17 +438,18 @@ export function StinaDashboard() {
                     <h4 className="font-medium">Email Monitoring</h4>
                     <p className="text-sm text-muted-foreground">
                       Stina monitors emails sent to your connected MailSlurp
-                      inbox and identifies meeting requests.
+                      inbox and displays them for individual analysis.
                     </p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Brain className="w-5 h-5 mt-0.5 text-purple-500" />
                   <div>
-                    <h4 className="font-medium">AI Analysis</h4>
+                    <h4 className="font-medium">Two-Stage AI Processing</h4>
                     <p className="text-sm text-muted-foreground">
-                      Uses Claude AI to understand meeting context,
-                      participants, and preferences.
+                      First, Email-Analyst extracts structured meeting
+                      information. Then, Stina AI processes the enriched data
+                      for scheduling.
                     </p>
                   </div>
                 </div>
@@ -320,7 +459,8 @@ export function StinaDashboard() {
                     <h4 className="font-medium">Smart Scheduling</h4>
                     <p className="text-sm text-muted-foreground">
                       Automatically checks calendar availability and creates
-                      optimized meeting slots.
+                      optimized meeting slots with enhanced context
+                      understanding.
                     </p>
                   </div>
                 </div>
