@@ -30,11 +30,11 @@ export async function POST() {
     }
 
     const mailslurp = new MailSlurp({ apiKey });
-    
+
     // Get unread emails
     const emails = await mailslurp.emailController.getEmailsPaginated({
       inboxId: [INBOX_ID],
-      unreadOnly: true,
+      unreadOnly: false,
     });
 
     if (!emails.content || emails.content.length === 0) {
@@ -51,13 +51,14 @@ export async function POST() {
         const fullEmail = await mailslurp.emailController.getEmail({
           emailId: email.id!,
         });
-        
+
         return {
           id: fullEmail.id!,
           subject: fullEmail.subject || '',
           from: fullEmail.from || '',
           body: fullEmail.body || '',
-          createdAt: fullEmail.createdAt?.toISOString() || new Date().toISOString(),
+          createdAt:
+            fullEmail.createdAt?.toISOString() || new Date().toISOString(),
         };
       })
     );
@@ -66,31 +67,30 @@ export async function POST() {
     await stinaAgent.processEmails(emailContexts);
 
     // Mark emails as read (optional - you might want to keep them unread)
-    await Promise.all(
-      emails.content.map(async (email) => {
-        try {
-          await mailslurp.emailController.markAsRead({
-            emailId: email.id!,
-            read: true,
-          });
-        } catch (error) {
-          console.error(`Failed to mark email ${email.id} as read:`, error);
-        }
-      })
-    );
+    // await Promise.all(
+    //   emails.content.map(async (email) => {
+    //     try {
+    //       await mailslurp.emailController.markAsRead({
+    //         emailId: email.id!,
+    //         read: true,
+    //       });
+    //     } catch (error) {
+    //       console.error(`Failed to mark email ${email.id} as read:`, error);
+    //     }
+    //   })
+    // );
 
     return NextResponse.json({
       success: true,
       message: `Processed ${emailContexts.length} emails`,
       processedCount: emailContexts.length,
-      emails: emailContexts.map(email => ({
+      emails: emailContexts.map((email) => ({
         id: email.id,
         subject: email.subject,
         from: email.from,
         createdAt: email.createdAt,
       })),
     });
-
   } catch (error) {
     console.error('Error processing emails with Stina:', error);
     return NextResponse.json(
@@ -121,7 +121,7 @@ export async function GET() {
     }
 
     const mailslurp = new MailSlurp({ apiKey });
-    
+
     const emails = await mailslurp.emailController.getEmailsPaginated({
       inboxId: [INBOX_ID],
       unreadOnly: true,
@@ -130,14 +130,14 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       unreadCount: emails.content?.length || 0,
-      emails: emails.content?.map(email => ({
-        id: email.id,
-        subject: email.subject,
-        from: email.from,
-        createdAt: email.createdAt,
-      })) || [],
+      emails:
+        emails.content?.map((email) => ({
+          id: email.id,
+          subject: email.subject,
+          from: email.from,
+          createdAt: email.createdAt,
+        })) || [],
     });
-
   } catch (error) {
     console.error('Error checking email status:', error);
     return NextResponse.json(

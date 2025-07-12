@@ -201,6 +201,7 @@ export class StinaAgent {
   }
 
   async processEmails(emails: EmailContext[]): Promise<void> {
+    console.log('Processing emails - ', emails.length);
     for (const email of emails) {
       try {
         await this.processEmail(email);
@@ -211,6 +212,7 @@ export class StinaAgent {
   }
 
   private async processEmail(email: EmailContext): Promise<void> {
+    console.log('Processing email - ', email.subject);
     const meetingIntent = await this.analyzeMeetingIntent(email);
 
     if (meetingIntent) {
@@ -256,6 +258,8 @@ export class StinaAgent {
         tools,
         messages,
       });
+
+      console.log('Response - ', response);
 
       // Handle tool use in the response
       for (const content of response.content) {
@@ -320,9 +324,9 @@ export class StinaAgent {
       return null;
     }
 
+    // Try to extract JSON from the response
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     try {
-      // Try to extract JSON from the response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const intent = JSON.parse(jsonMatch[0]);
 
@@ -333,6 +337,8 @@ export class StinaAgent {
       }
     } catch (error) {
       console.error('Error parsing meeting intent JSON:', error);
+      console.log('Response text - ', responseText);
+      console.log('Tried to parse JSON - ', jsonMatch);
     }
 
     return null;
