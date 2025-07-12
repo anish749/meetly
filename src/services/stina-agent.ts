@@ -1,17 +1,20 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { generateObject, generateText } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
 import { GoogleCalendarService } from './google-calendar-service';
 import { adminDb } from '@/config/firebase-admin';
-import { StinaTools } from './stina-tools';
+import { stinaAiTools } from './stina-ai-tools';
 import { FieldValue } from 'firebase-admin/firestore';
+import { z } from 'zod';
 
-export interface StinaTool {
-  name: string;
-  description: string;
-  input_schema: {
-    type: 'object';
-    properties: Record<string, unknown>;
-    required: string[];
-  };
+// Session tracking for multi-step workflows
+export interface StinaSession {
+  id: string;
+  userEmail: string;
+  status: 'INITIATING' | 'TIME_PROPOSED' | 'TIME_CONFIRMED' | 'VENUE_PROPOSED' | 'CALENDAR_BOOKED' | 'COMPLETED';
+  progress: number;
+  context: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface StinaContext {
@@ -106,18 +109,16 @@ export interface MeetingIntent {
 }
 
 export class StinaAgent {
-  private anthropic: Anthropic;
   private userEmail: string;
   private context: StinaContext;
+  private model: ReturnType<typeof anthropic>;
 
   constructor(userEmail: string) {
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY environment variable is required');
     }
 
-    this.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    this.model = anthropic('claude-3-5-sonnet-20241022');
     this.userEmail = userEmail;
     this.context = {
       userEmail,
@@ -223,125 +224,120 @@ export class StinaAgent {
   private async analyzeMeetingIntent(
     email: EmailContext
   ): Promise<MeetingIntent | null> {
-    const tools = this.getTools();
-    const stinaTools = new StinaTools(this.userEmail);
-
-    const messages: Anthropic.Messages.MessageParam[] = [
-      {
-        role: 'user',
-        content: `
-          Analyze this email to determine if it's a meeting request and extract meeting details:
+    try {
+      // Create a unique session for this email processing
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // First, use generateText with tools to analyze the email and perform multi-step reasoning
+      const result = await generateText({
+        model: this.model,
+        maxSteps: 20,
+        tools: stinaAiTools,
+        prompt: `
+          You are Stina, an AI executive assistant. Analyze this email to determine if it's a meeting request and help schedule it.
           
+          Email Details:
           Subject: ${email.subject}
           From: ${email.from}
           Body: ${email.body}
           
-          Context about the user:
+          User Context:
           - Working hours: ${this.context.preferences.workingHours.start} - ${this.context.preferences.workingHours.end}
           - Time zone: ${this.context.preferences.timeZone}
           - Default meeting type: ${this.context.preferences.defaultMeetingType}
           
-          If this is a meeting request:
-          1. Use tools to check calendar availability and get contact preferences
-          2. Extract meeting details (type, participants, duration, preferred times, location, agenda, urgency)
-          3. Return structured meeting intent
+          Instructions:
+          1. First, update the session status to INITIATING
+          2. Analyze if this is a meeting request
+          3. If it is a meeting request:
+             - Extract participant emails from the message
+             - Look up person details for each participant
+             - Check calendar availability for suggested times
+             - If location is mentioned or in-person meeting, find suitable venues
+             - Update session progress as you work
+          4. If it's not a meeting request, respond with "NOT_MEETING_REQUEST"
           
-          If this is not a meeting request, simply respond with "NOT_MEETING_REQUEST".
+          Session ID: ${sessionId}
+          
+          Think step by step and use the available tools to gather all necessary information.
         `,
-      },
-    ];
-
-    try {
-      const response = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2000,
-        tools,
-        messages,
       });
 
-      console.log('Response - ', response);
+      console.log('AI Analysis Steps:', result.steps?.length || 0);
+      console.log('Final Response:', result.text);
 
-      // Handle tool use in the response
-      for (const content of response.content) {
-        if (content.type === 'tool_use') {
-          const toolResult = await stinaTools.executeToolCall(
-            content.name,
-            content.input as Record<string, unknown>
-          );
-
-          messages.push({
-            role: 'assistant',
-            content: [content],
-          });
-
-          messages.push({
-            role: 'user',
-            content: [
-              {
-                type: 'tool_result',
-                tool_use_id: content.id,
-                content: JSON.stringify(toolResult),
-              },
-            ],
-          });
-        }
+      // Parse the final response for meeting intent
+      if (result.text.includes('NOT_MEETING_REQUEST')) {
+        return null;
       }
 
-      // If tools were used, get the final response
-      if (messages.length > 1) {
-        const finalResponse = await this.anthropic.messages.create({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 1000,
-          messages: messages.concat([
-            {
-              role: 'user',
-              content:
-                'Based on the tool results, provide the final meeting intent as JSON or "NOT_MEETING_REQUEST".',
-            },
-          ]),
-        });
-
-        const finalContent = finalResponse.content[0];
-        if (finalContent.type === 'text') {
-          return this.parseMeetingIntent(finalContent.text);
-        }
-      } else {
-        // No tools were used, parse the direct response
-        const directContent = response.content[0];
-        if (directContent.type === 'text') {
-          return this.parseMeetingIntent(directContent.text);
-        }
-      }
+      // Extract meeting intent from the response or tool calls
+      return await this.extractMeetingIntentFromResponse(result.text, email);
     } catch (error) {
       console.error('Error analyzing meeting intent:', error);
-    }
-
-    return null;
-  }
-
-  private parseMeetingIntent(responseText: string): MeetingIntent | null {
-    if (responseText.includes('NOT_MEETING_REQUEST')) {
       return null;
     }
+  }
 
-    // Try to extract JSON from the response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  private async extractMeetingIntentFromResponse(
+    responseText: string, 
+    email: EmailContext
+  ): Promise<MeetingIntent | null> {
     try {
-      if (jsonMatch) {
-        const intent = JSON.parse(jsonMatch[0]);
+      // Use generateObject to extract structured meeting intent
+      const meetingIntentSchema = z.object({
+        type: z.enum(['in-person', 'virtual', 'hybrid']),
+        participants: z.array(z.string().email()),
+        duration: z.number().min(15).max(480), // 15 minutes to 8 hours
+        preferredTimes: z.array(z.string()),
+        location: z.string().optional(),
+        agenda: z.string().optional(),
+        urgency: z.enum(['low', 'medium', 'high'])
+      });
 
-        // Validate required fields
-        if (intent.participants && intent.duration && intent.type) {
-          return intent as MeetingIntent;
+      const { object: meetingIntent } = await generateObject({
+        model: this.model,
+        schema: meetingIntentSchema,
+        prompt: `
+          Extract meeting details from this analysis and email:
+          
+          Analysis: ${responseText}
+          
+          Original Email:
+          Subject: ${email.subject}
+          From: ${email.from}
+          Body: ${email.body}
+          
+          Extract the meeting intent with:
+          - type: meeting format preference
+          - participants: array of email addresses
+          - duration: meeting length in minutes
+          - preferredTimes: array of suggested time strings
+          - location: meeting location if specified
+          - agenda: meeting purpose/agenda if mentioned
+          - urgency: how urgent this meeting seems
+        `,
+      });
+
+      return meetingIntent as MeetingIntent;
+    } catch (error) {
+      console.error('Error extracting meeting intent:', error);
+      
+      // Fallback to simple parsing if structured extraction fails
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const intent = JSON.parse(jsonMatch[0]);
+          if (intent.participants && intent.duration && intent.type) {
+            return intent as MeetingIntent;
+          }
+        } catch (parseError) {
+          console.error('Fallback parsing failed:', parseError);
         }
       }
-    } catch (error) {
-      console.error('Error parsing meeting intent JSON:', error);
-      console.log('Response text - ', responseText);
-      console.log('Tried to parse JSON - ', jsonMatch);
+      
+      return null;
     }
-
-    return null;
   }
 
   private async handleMeetingRequest(
@@ -403,39 +399,59 @@ export class StinaAgent {
     startTime: string;
     endTime: string;
   } | null> {
-    // AI-powered slot finding based on availability and preferences
-    const tools = this.getTools();
+    try {
+      // Use AI to find the best meeting slot with multi-step reasoning
+      const result = await generateText({
+        model: this.model,
+        maxSteps: 10,
+        tools: stinaAiTools,
+        prompt: `
+          Find the best meeting slot based on the following requirements:
+          
+          Meeting Requirements:
+          - Duration: ${intent.duration} minutes
+          - Type: ${intent.type}
+          - Participants: ${intent.participants.join(', ')}
+          - Preferred times: ${intent.preferredTimes.join(', ')}
+          
+          User Preferences:
+          - Working hours: ${this.context.preferences.workingHours.start} - ${this.context.preferences.workingHours.end}
+          - Meeting buffer: ${this.context.preferences.meetingBuffer} minutes
+          
+          Steps:
+          1. Check calendar availability for the next 7 days
+          2. Consider the preferred times mentioned
+          3. Factor in working hours and meeting buffer
+          4. Recommend the best slot with justification
+          
+          Return your final recommendation as a JSON object with startTime and endTime in ISO format.
+        `,
+      });
 
-    await this.anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1000,
-      tools,
-      messages: [
-        {
-          role: 'user',
-          content: `
-            Find the best meeting slot based on:
-            
-            Meeting Requirements:
-            - Duration: ${intent.duration} minutes
-            - Type: ${intent.type}
-            - Participants: ${intent.participants.join(', ')}
-            - Preferred times: ${intent.preferredTimes.join(', ')}
-            
-            User Preferences:
-            - Working hours: ${this.context.preferences.workingHours.start} - ${this.context.preferences.workingHours.end}
-            - Meeting buffer: ${this.context.preferences.meetingBuffer} minutes
-            
-            Availability: ${JSON.stringify(availability)}
-            
-            Return the best meeting slot with date, time, and justification.
-          `,
-        },
-      ],
-    });
+      // Extract time slot from the response
+      const timeSlotMatch = result.text.match(/"startTime":\s*"([^"]+)",\s*"endTime":\s*"([^"]+)"/);
+      if (timeSlotMatch) {
+        return {
+          startTime: timeSlotMatch[1],
+          endTime: timeSlotMatch[2]
+        };
+      }
 
-    // Parse response and return best slot
-    return null; // Simplified for now
+      // Fallback: generate a simple slot based on preferences
+      const now = new Date();
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      tomorrow.setHours(14, 0, 0, 0); // 2 PM tomorrow
+      
+      const endTime = new Date(tomorrow.getTime() + intent.duration * 60 * 1000);
+      
+      return {
+        startTime: tomorrow.toISOString(),
+        endTime: endTime.toISOString()
+      };
+    } catch (error) {
+      console.error('Error finding meeting slot:', error);
+      return null;
+    }
   }
 
   private async createMeetingEvent(
@@ -495,95 +511,6 @@ export class StinaAgent {
     }
   }
 
-  private getTools(): StinaTool[] {
-    return [
-      {
-        name: 'check_calendar_availability',
-        description: 'Check calendar availability for scheduling meetings',
-        input_schema: {
-          type: 'object',
-          properties: {
-            startDate: {
-              type: 'string',
-              description: 'Start date in ISO format',
-            },
-            endDate: { type: 'string', description: 'End date in ISO format' },
-            participants: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'List of participant email addresses',
-            },
-          },
-          required: ['startDate', 'endDate'],
-        },
-      },
-      {
-        name: 'get_weather_info',
-        description:
-          'Get current weather information for location-based meeting planning',
-        input_schema: {
-          type: 'object',
-          properties: {
-            location: {
-              type: 'string',
-              description: 'Location to get weather for',
-            },
-          },
-          required: ['location'],
-        },
-      },
-      {
-        name: 'find_nearby_venues',
-        description:
-          'Find cafes, restaurants, or meeting venues near a location',
-        input_schema: {
-          type: 'object',
-          properties: {
-            location: {
-              type: 'string',
-              description: 'Location to search near',
-            },
-            type: {
-              type: 'string',
-              enum: ['cafe', 'restaurant', 'meeting_room', 'coworking'],
-              description: 'Type of venue to find',
-            },
-            radius: {
-              type: 'number',
-              description: 'Search radius in kilometers',
-            },
-          },
-          required: ['location', 'type'],
-        },
-      },
-      {
-        name: 'get_contact_preferences',
-        description: 'Get stored preferences and context for a contact',
-        input_schema: {
-          type: 'object',
-          properties: {
-            email: { type: 'string', description: 'Contact email address' },
-          },
-          required: ['email'],
-        },
-      },
-      {
-        name: 'update_contact_preferences',
-        description: 'Update stored preferences for a contact',
-        input_schema: {
-          type: 'object',
-          properties: {
-            email: { type: 'string', description: 'Contact email address' },
-            preferences: {
-              type: 'object',
-              description: 'Preferences to update',
-            },
-          },
-          required: ['email', 'preferences'],
-        },
-      },
-    ];
-  }
 
   async saveUserPreferences(
     preferences: Partial<UserPreferences>
@@ -607,6 +534,109 @@ export class StinaAgent {
     } catch (error) {
       console.error('Error saving user preferences:', error);
       throw error;
+    }
+  }
+
+  // Session management methods
+  private async createSession(emailId: string): Promise<StinaSession> {
+    const session: StinaSession = {
+      id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      userEmail: this.userEmail,
+      status: 'INITIATING',
+      progress: 0,
+      context: {
+        emailId,
+        createdFrom: 'email_processing'
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      await adminDb
+        .collection('users')
+        .doc(this.userEmail)
+        .collection('stina_sessions')
+        .doc(session.id)
+        .set(session);
+    } catch (error) {
+      console.error('Error creating session:', error);
+    }
+
+    return session;
+  }
+
+  private async updateSession(
+    sessionId: string, 
+    updates: Partial<Pick<StinaSession, 'status' | 'progress' | 'context'>>
+  ): Promise<void> {
+    try {
+      await adminDb
+        .collection('users')
+        .doc(this.userEmail)
+        .collection('stina_sessions')
+        .doc(sessionId)
+        .update({
+          ...updates,
+          updatedAt: new Date().toISOString()
+        });
+    } catch (error) {
+      console.error('Error updating session:', error);
+    }
+  }
+
+  // Enhanced email processing with AI-powered multi-step workflow
+  async processEmailWithAI(email: EmailContext): Promise<void> {
+    console.log(`Processing email with AI: ${email.subject}`);
+    
+    try {
+      // Create a session to track this processing workflow
+      const session = await this.createSession(email.id);
+
+      // Use AI with tools to process the email end-to-end
+      const result = await generateText({
+        model: this.model,
+        maxSteps: 20,
+        tools: stinaAiTools,
+        prompt: `
+          You are Stina, an AI executive assistant. Process this email comprehensively:
+          
+          Email Details:
+          Subject: ${email.subject}
+          From: ${email.from}
+          Body: ${email.body}
+          
+          User Context:
+          - Email: ${this.userEmail}
+          - Working hours: ${this.context.preferences.workingHours.start} - ${this.context.preferences.workingHours.end}
+          - Time zone: ${this.context.preferences.timeZone}
+          - Default meeting type: ${this.context.preferences.defaultMeetingType}
+          
+          Session ID: ${session.id}
+          
+          Instructions:
+          1. Update session status to INITIATING with 10% progress
+          2. Analyze if this requires meeting scheduling
+          3. If it's a meeting request:
+             - Extract participant details and look them up
+             - Check calendar availability for next 2 weeks
+             - If location needed, find suitable venues
+             - Update session progress to TIME_PROPOSED (40%)
+             - Send appropriate response email
+             - Update session to COMPLETED (100%)
+          4. If it's not a meeting request:
+             - Determine appropriate response action
+             - Update session status accordingly
+          
+          Be thorough and use all available tools to provide comprehensive assistance.
+        `,
+      });
+
+      console.log(`Processed email in ${result.steps?.length || 0} AI steps`);
+      console.log('Final result:', result.text);
+      
+    } catch (error) {
+      console.error('Error in AI email processing:', error);
     }
   }
 }
