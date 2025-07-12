@@ -48,15 +48,6 @@ export const commsSendEmailSchema = z.object({
   to: z.array(z.string().email()).describe('Recipient e-mail address(es).'),
   subject: z.string().describe('E-mail subject line.'),
   body: z.string().describe('Plain-text or simple HTML body.'),
-  thread_id: z
-    .string()
-    .nullable()
-    .optional()
-    .describe('Existing thread ID if replying.'),
-  watch: z
-    .boolean()
-    .default(false)
-    .describe('If true, backend will watch this thread for replies.'),
 });
 
 export const backendUpdateMeetingRequestSchema = z.object({
@@ -235,25 +226,9 @@ export class StinaTools {
         to: parameters.to,
         subject: parameters.subject,
         body: parameters.body,
-        thread_id: parameters.thread_id,
         timestamp: new Date().toISOString(),
         status: 'sent',
-        watch: parameters.watch,
       };
-
-      // Store in database for tracking
-      if (parameters.watch) {
-        await adminDb
-          .collection('users')
-          .doc(this.userEmail)
-          .collection('email_threads')
-          .doc(emailData.id)
-          .set({
-            ...emailData,
-            watching: true,
-            user_email: this.userEmail,
-          });
-      }
 
       return {
         success: true,
@@ -262,7 +237,6 @@ export class StinaTools {
           status: 'sent',
           recipients: parameters.to,
           subject: parameters.subject,
-          watching: parameters.watch,
           message:
             'Email sent successfully. Recipient will receive scheduling proposal.',
         },
