@@ -6,6 +6,7 @@ export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/contacts.readonly',
 ];
 
 export function createOAuth2Client(redirectUri?: string) {
