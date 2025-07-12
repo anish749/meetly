@@ -16,13 +16,12 @@ export async function POST() {
 
     const mailslurp = new MailSlurp({ apiKey });
 
-    // Fetch unread emails
+    // Fetch emails
     const emails = await mailslurp.emailController.getEmailsPaginated({
       inboxId: [INBOX_ID],
-      unreadOnly: true,
     });
 
-    // Get full email content for each unread email
+    // Get full email content for each email
     const emailContents = await Promise.all(
       emails.content?.map(async (email) => {
         const fullEmail = await mailslurp.emailController.getEmail({
@@ -39,7 +38,7 @@ export async function POST() {
     );
 
     // Log the contents
-    console.log('Unread emails:', emailContents);
+    console.log('Emails:', emailContents);
 
     return NextResponse.json({
       success: true,
