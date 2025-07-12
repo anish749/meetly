@@ -27,11 +27,7 @@ export default function DashboardPage() {
   const [loadingEvents, setLoadingEvents] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isLoading, isAuthenticated, router]);
+  // Middleware handles authentication redirect
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -54,16 +50,12 @@ export default function DashboardPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-lg">Loading...</div>
       </div>
     );
-  }
-
-  if (!isAuthenticated) {
-    return null;
   }
 
   return (

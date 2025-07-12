@@ -14,7 +14,6 @@ export function middleware(request: NextRequest) {
   const isProtectedRoute = protectedRoutes.some((route) =>
     pathname.startsWith(route)
   );
-  const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
 
   // Redirect to login if accessing protected route without session
   if (isProtectedRoute && !sessionToken) {
@@ -22,11 +21,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Redirect to dashboard if accessing auth routes with session
-  if (isAuthRoute && sessionToken) {
-    const dashboardUrl = new URL('/dashboard', request.url);
-    return NextResponse.redirect(dashboardUrl);
-  }
+  // Don't automatically redirect from login to dashboard
+  // Let the auth context handle valid session checks
 
   return NextResponse.next();
 }

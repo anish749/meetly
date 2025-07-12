@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 function LoginContent() {
   const [email, setEmail] = useState('');
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoading } = useAuth();
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
+  const router = useRouter();
 
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +24,13 @@ function LoginContent() {
     // TODO: Implement Microsoft authentication
     console.log('Microsoft login not implemented yet');
   };
+
+  useEffect(() => {
+    // Only redirect if we have a truly authenticated user
+    if (!isLoading && isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isLoading, isAuthenticated, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
