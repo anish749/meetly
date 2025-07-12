@@ -23,6 +23,7 @@ import {
   AlertCircle,
   Clock,
 } from 'lucide-react';
+import type { UserDocument } from '@/types/firebase-collections';
 
 interface EmailSummary {
   id: string;
@@ -31,16 +32,7 @@ interface EmailSummary {
   createdAt: string;
 }
 
-interface StinaPreferences {
-  defaultMeetingType?: 'in-person' | 'virtual' | 'hybrid';
-  workingHours?: {
-    start: string;
-    end: string;
-    days: string[];
-  };
-  timeZone?: string;
-  meetingBuffer?: number;
-}
+type StinaPreferences = NonNullable<UserDocument['stinaPreferences']>;
 
 export function StinaDashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
