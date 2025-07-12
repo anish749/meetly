@@ -49,32 +49,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
-    // Create a meeting request with analysing_email status first
-    const meetingRequest = await MeetingRequestService.create({
-      participants: [], // Will be populated from analyst response
-      creator: {
-        email: user.email,
-        source: 'email',
-      },
-      context: {
-        summary: `Email analysis for: ${email.subject || 'No subject'}`,
-      },
-      communications: [
-        {
-          type: 'email',
-          content: email.body || '',
-          sender: email.from || '',
-          timestamp: email.createdAt?.toISOString() || new Date().toISOString(),
-          processed: false,
+    // Create a meeting request with analysing_email status
+    const meetingRequest = await MeetingRequestService.create(
+      {
+        participants: [], // Will be populated from analyst response
+        creator: {
+          email: user.email,
+          source: 'email',
         },
-      ],
-      metadata: {},
-    });
-
-    // Update status to analysing_email
-    await MeetingRequestService.update(meetingRequest.id, {
-      status: 'analysing_email',
-    });
+        context: {
+          summary: `Email analysis for: ${email.subject || 'No subject'}`,
+        },
+        communications: [
+          {
+            type: 'email',
+            content: email.body || '',
+            sender: email.from || '',
+            timestamp:
+              email.createdAt?.toISOString() || new Date().toISOString(),
+            processed: false,
+          },
+        ],
+        metadata: {},
+      },
+      'analysing_email'
+    );
 
     // Analyze the email content
     const emailContent = `
@@ -128,9 +127,16 @@ ${email.body || 'No content'}
       return NextResponse.json({
         success: true,
         meetingRequestId: meetingRequest.id,
-        analysisResult,
         status: 'processing_with_stina',
         message: 'Email analyzed successfully. Ready for Stina processing.',
+        analysis: {
+          meetingIntent: analysisResult.meeting_intent,
+          duration: analysisResult.duration_minutes,
+          location: analysisResult.location_hint,
+          invitees: analysisResult.invitees,
+          confidence: analysisResult.confidence,
+        },
+        rawAnalysisResult: analysisResult,
       });
     } else {
       // Analysis failed, update status and store error

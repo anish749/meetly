@@ -13,8 +13,10 @@ const emailAnalystSchema = z.object({
     z.object({
       name: z.string().optional(),
       email: z.string().email(),
+      role: z.enum(['attendee', 'coordinator']),
       relationship: z.string().optional(),
       work_context: z.string().optional(),
+      coordinates_for: z.string().optional(),
     })
   ),
   meeting_intent: z.string(),
@@ -22,6 +24,7 @@ const emailAnalystSchema = z.object({
   duration_minutes: z.number().nullable().optional(),
   location_hint: z.string().nullable().optional(),
   other_notes: z.string().nullable().optional(),
+  confidence: z.enum(['high', 'medium', 'low']),
 });
 
 // System prompt for Email Analyst
@@ -32,32 +35,34 @@ for scheduling a meeting.  Produce ONLY valid JSON matching the schema
 provided.  Do not output explanations or prose.
 
 Guidelines
-• "Initiator" = the person who first asked to meet (usually the Stina
-  user).  If unclear, assume the Stina user.
-• "Invitees" = everyone the initiator wants to meet (exclude Stina).
-• Time phrases: capture as-written ("next Tuesday afternoon"),
-  no date maths.
+• "Invitees" = ALL people involved in the meeting process (both attendees and their coordinators).
+• CRITICAL: Include both executives/decision-makers AND their assistants/coordinators who help with scheduling.
+• CRITICAL: Use "role" field to distinguish between "attendee" (will attend meeting) and "coordinator" (schedules for someone else).
+• CRITICAL: Look for phrases like "on behalf of", "assistant to", "scheduling for" to identify coordinators.
+• CRITICAL: If someone has a title like "Executive Assistant", "EA", mark their role as "coordinator".
+• CRITICAL: Include the actual executive they represent as a separate invitee with role "attendee".
+• CRITICAL: NEVER include the current user email (provided below) in the invitees list.
+• CRITICAL: NEVER include Stina AI assistant emails (like stina@meetly.com) in the invitees list.
+• Time phrases: capture as-written ("next Tuesday afternoon"), no date maths.
 • Location: capture any hints (preferred café, postcode, "virtual").
 
 Schema:
 {
   "type": "object",
   "properties": {
-    "initiator": {            // Who asked for the meeting
-      "name":  { "type":"string" },
-      "email": { "type":"string","format":"email" }
-    },
-    "invitees": {             // Array in case of >1 person
+    "invitees": {             // ALL people involved (attendees and coordinators)
       "type":"array",
       "items":{
         "type":"object",
         "properties":{
           "name":  { "type":"string" },
           "email": { "type":"string","format":"email" },
-           "relationship": { "type":"string" },
-            "work_context": { "type": "string" } // title and workplace if exists
+          "role": { "type":"string","enum":["attendee","coordinator"] },
+          "relationship": { "type":"string" },
+          "work_context": { "type": "string" }, // title and workplace
+          "coordinates_for": { "type": "string" } // if coordinator, who they schedule for
         },
-        "required":["email"]
+        "required":["email","role"]
       }
     },
     "meeting_intent": {       // free-form description
@@ -74,13 +79,16 @@ Schema:
     },
     "other_notes": {          // anything else worth surfacing to Stina
       "type":"string","nullable":true
+    },
+    "confidence": {           // how confident are you in this analysis
+      "type":"string","enum":["high","medium","low"]
     }
   },
-  "required": ["initiator","invitees"]
+  "required": ["initiator","invitees","meeting_intent","confidence"]
 }`;
 
 export class EmailAnalystService {
-  private model = anthropic('claude-3-5-sonnet-20241022');
+  private model = anthropic('claude-sonnet-4-20250514');
 
   /**
    * Analyzes an email thread and extracts structured meeting information
@@ -97,7 +105,13 @@ export class EmailAnalystService {
 
 ${emailContent}
 
-Stina user email: ${userEmail}
+Current user email (DO NOT include in invitees): ${userEmail}
+
+IMPORTANT: Include ALL people involved in the scheduling process:
+- Mark executives/decision-makers as role "attendee" 
+- Mark assistants/coordinators as role "coordinator"
+- If a coordinator schedules for someone, specify who in "coordinates_for" field
+- This gives full visibility into who needs to be involved in scheduling
 
 Extract the structured meeting information according to the schema.`;
 

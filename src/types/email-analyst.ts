@@ -6,8 +6,10 @@ export interface EmailAnalystInitiator {
 export interface EmailAnalystInvitee {
   name?: string;
   email: string;
+  role: 'attendee' | 'coordinator';
   relationship?: string;
   work_context?: string;
+  coordinates_for?: string;
 }
 
 export interface EmailAnalystResponse {
@@ -18,6 +20,7 @@ export interface EmailAnalystResponse {
   duration_minutes?: number | null;
   location_hint?: string | null;
   other_notes?: string | null;
+  confidence: 'high' | 'medium' | 'low';
 }
 
 export interface EmailAnalystError {

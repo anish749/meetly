@@ -21,6 +21,11 @@ import {
   Brain,
   CheckCircle,
   AlertCircle,
+  Users,
+  Clock,
+  MapPin,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface EmailSummary {
@@ -30,12 +35,28 @@ interface EmailSummary {
   createdAt: string;
 }
 
+interface AnalysisResult {
+  meetingIntent: string;
+  duration?: number;
+  location?: string;
+  invitees: Array<{
+    email: string;
+    name: string;
+    role: 'attendee' | 'coordinator';
+    work_context?: string;
+    relationship?: string;
+    coordinates_for?: string;
+  }>;
+  confidence: string;
+}
+
 interface EmailAnalysisState {
   [emailId: string]: {
     isAnalyzing: boolean;
     isProcessingWithStina: boolean;
     analysisComplete: boolean;
     meetingRequestId?: string;
+    analysisResult?: AnalysisResult;
     error?: string;
   };
 }
@@ -57,6 +78,9 @@ export function StinaDashboard() {
   const [emailAnalysisState, setEmailAnalysisState] =
     useState<EmailAnalysisState>({});
   const [preferences, setPreferences] = useState<StinaPreferences>({});
+  const [expandedAnalysis, setExpandedAnalysis] = useState<Set<string>>(
+    new Set()
+  );
 
   useEffect(() => {
     fetchEmailStatus();
@@ -124,15 +148,11 @@ export function StinaDashboard() {
             isAnalyzing: false,
             analysisComplete: true,
             meetingRequestId: data.meetingRequestId,
+            analysisResult: data.analysis,
           },
         }));
 
-        toast.success(
-          'Email analyzed successfully! Ready for Stina processing.'
-        );
-
-        // Automatically process with Stina after analysis
-        await processWithStina(emailId, data.meetingRequestId);
+        toast.success('Email analyzed successfully! Review the results below.');
       } else {
         const errorData = await response.json();
         setEmailAnalysisState((prev) => ({
@@ -302,58 +322,231 @@ export function StinaDashboard() {
                     analysisState.isAnalyzing ||
                     analysisState.isProcessingWithStina;
 
+                  const isExpanded = expandedAnalysis.has(email.id);
+                  const hasAnalysisResults = analysisState.analysisResult;
+
                   return (
                     <div
                       key={email.id}
-                      className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border"
+                      className="bg-muted/50 rounded-lg border"
                     >
-                      <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {email.subject || 'No Subject'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          From: {email.from}
-                        </p>
-                        {analysisState.error && (
-                          <p className="text-xs text-red-600 mt-1">
-                            {analysisState.error}
+                      {/* Email Header */}
+                      <div className="flex items-center gap-3 p-3">
+                        <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {email.subject || 'No Subject'}
                           </p>
-                        )}
+                          <p className="text-xs text-muted-foreground">
+                            From: {email.from}
+                          </p>
+                          {analysisState.error && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {analysisState.error}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {analysisState.isAnalyzing && (
+                            <Badge variant="secondary" className="text-xs">
+                              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                              Analyzing...
+                            </Badge>
+                          )}
+                          {analysisState.isProcessingWithStina && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Brain className="w-3 h-3 mr-1" />
+                              Processing with Stina...
+                            </Badge>
+                          )}
+                          {!isProcessing && !analysisState.analysisComplete && (
+                            <Button
+                              size="sm"
+                              onClick={() => analyzeEmail(email.id)}
+                              className="h-8 px-3"
+                            >
+                              <Brain className="w-3 h-3 mr-1" />
+                              Analyze
+                            </Button>
+                          )}
+                          {hasAnalysisResults && !isProcessing && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const newExpanded = new Set(expandedAnalysis);
+                                  if (isExpanded) {
+                                    newExpanded.delete(email.id);
+                                  } else {
+                                    newExpanded.add(email.id);
+                                  }
+                                  setExpandedAnalysis(newExpanded);
+                                }}
+                                className="h-8 px-2"
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3 h-3" />
+                                ) : (
+                                  <ChevronDown className="w-3 h-3" />
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  processWithStina(
+                                    email.id,
+                                    analysisState.meetingRequestId!
+                                  )
+                                }
+                                className="h-8 px-3"
+                              >
+                                <Brain className="w-3 h-3 mr-1" />
+                                Process with Stina
+                              </Button>
+                            </>
+                          )}
+                          {analysisState.analysisComplete &&
+                            !hasAnalysisResults &&
+                            !isProcessing && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-green-50"
+                              >
+                                <CheckCircle className="w-3 h-3 mr-1 text-green-600" />
+                                Complete
+                              </Badge>
+                            )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {analysisState.isAnalyzing && (
-                          <Badge variant="secondary" className="text-xs">
-                            <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                            Analyzing...
-                          </Badge>
-                        )}
-                        {analysisState.isProcessingWithStina && (
-                          <Badge variant="secondary" className="text-xs">
-                            <Brain className="w-3 h-3 mr-1" />
-                            Processing with Stina...
-                          </Badge>
-                        )}
-                        {!isProcessing && !analysisState.analysisComplete && (
-                          <Button
-                            size="sm"
-                            onClick={() => analyzeEmail(email.id)}
-                            className="h-8 px-3"
-                          >
-                            <Brain className="w-3 h-3 mr-1" />
-                            Analyze
-                          </Button>
-                        )}
-                        {analysisState.analysisComplete && !isProcessing && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs bg-green-50"
-                          >
-                            <CheckCircle className="w-3 h-3 mr-1 text-green-600" />
-                            Complete
-                          </Badge>
-                        )}
-                      </div>
+
+                      {/* Analysis Results */}
+                      {hasAnalysisResults && isExpanded && (
+                        <div className="border-t bg-white/50 p-4 space-y-3">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Brain className="w-4 h-4 text-purple-600" />
+                            <h4 className="font-medium text-sm">
+                              Analysis Results
+                            </h4>
+                            <Badge variant="outline" className="text-xs">
+                              {analysisState.analysisResult.confidence}
+                            </Badge>
+                          </div>
+
+                          <div className="space-y-3">
+                            {/* Meeting Intent */}
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <Calendar className="w-3 h-3 text-blue-600" />
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                  Meeting Purpose
+                                </span>
+                              </div>
+                              <p className="text-sm bg-blue-50 p-2 rounded border-l-2 border-blue-200">
+                                {analysisState.analysisResult.meetingIntent}
+                              </p>
+                            </div>
+
+                            {/* Duration */}
+                            {analysisState.analysisResult.duration && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Clock className="w-3 h-3 text-green-600" />
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Duration
+                                  </span>
+                                </div>
+                                <p className="text-sm text-green-700">
+                                  {analysisState.analysisResult.duration}{' '}
+                                  minutes
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Location */}
+                            {analysisState.analysisResult.location && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <MapPin className="w-3 h-3 text-orange-600" />
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Location
+                                  </span>
+                                </div>
+                                <p className="text-sm text-orange-700">
+                                  {analysisState.analysisResult.location}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Invitees */}
+                            {analysisState.analysisResult.invitees &&
+                              analysisState.analysisResult.invitees.length >
+                                0 && (
+                                <div>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Users className="w-3 h-3 text-purple-600" />
+                                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                      Invitees (
+                                      {
+                                        analysisState.analysisResult.invitees
+                                          .length
+                                      }
+                                      )
+                                    </span>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {analysisState.analysisResult.invitees.map(
+                                      (invitee, index) => (
+                                        <div
+                                          key={index}
+                                          className={`text-sm p-2 rounded border-l-2 ${
+                                            invitee.role === 'attendee'
+                                              ? 'bg-blue-50 border-blue-200'
+                                              : 'bg-amber-50 border-amber-200'
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <div className="font-medium">
+                                              {invitee.name}
+                                            </div>
+                                            <Badge
+                                              variant="outline"
+                                              className={`text-xs ${
+                                                invitee.role === 'attendee'
+                                                  ? 'bg-blue-100 text-blue-700'
+                                                  : 'bg-amber-100 text-amber-700'
+                                              }`}
+                                            >
+                                              {invitee.role === 'attendee'
+                                                ? 'Attendee'
+                                                : 'Coordinator'}
+                                            </Badge>
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            {invitee.email}
+                                          </div>
+                                          {(invitee.work_context ||
+                                            invitee.relationship) && (
+                                            <div className="text-xs mt-1 text-gray-600">
+                                              {invitee.work_context ||
+                                                invitee.relationship}
+                                            </div>
+                                          )}
+                                          {invitee.coordinates_for && (
+                                            <div className="text-xs mt-1 text-amber-700">
+                                              Coordinates for:{' '}
+                                              {invitee.coordinates_for}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
