@@ -66,6 +66,11 @@ export interface UserDocument {
     updatedAt?: string;
     version?: number;
   };
+  mailSlurp?: {
+    status: 'not-setup' | 'ready';
+    inboxId: string;
+    mailslurpEmail: string;
+  };
 }
 
 // Contact Document (stored in 'users/{email}/contacts' sub-collection)

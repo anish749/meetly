@@ -63,6 +63,7 @@ interface EmailAnalysisState {
 }
 
 type StinaPreferences = NonNullable<UserDocument['stinaPreferences']>;
+type MailSlurpConfig = NonNullable<UserDocument['mailSlurp']>;
 
 export function StinaDashboard() {
   const [isLoading, setIsLoading] = useState(false);
@@ -70,6 +71,13 @@ export function StinaDashboard() {
   const [emailAnalysisState, setEmailAnalysisState] =
     useState<EmailAnalysisState>({});
   const [preferences, setPreferences] = useState<StinaPreferences>({});
+  const [mailSlurpConfig, setMailSlurpConfig] = useState<MailSlurpConfig>({
+    status: 'not-setup',
+    inboxId: '',
+    mailslurpEmail: '',
+  });
+  const [customEmailInput, setCustomEmailInput] = useState('');
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [expandedAnalysis, setExpandedAnalysis] = useState<Set<string>>(
     new Set()
   );
@@ -77,6 +85,7 @@ export function StinaDashboard() {
   useEffect(() => {
     fetchEmailStatus();
     fetchPreferences();
+    fetchMailSlurpConfig();
   }, []);
 
   const fetchEmailStatus = async () => {
@@ -108,6 +117,60 @@ export function StinaDashboard() {
       }
     } catch {
       // Error fetching preferences - using default empty object
+    }
+  };
+
+  const fetchMailSlurpConfig = async () => {
+    try {
+      const response = await fetch('/api/mailslurp/email-config');
+      if (response.ok) {
+        const data = await response.json();
+        const config = data.mailSlurp || {
+          status: 'not-setup',
+          inboxId: '',
+          mailslurpEmail: '',
+        };
+        setMailSlurpConfig(config);
+
+        // Set the current custom email input from the existing email
+        if (config.mailslurpEmail) {
+          const customPart = config.mailslurpEmail.replace('@mailslurp.io', '');
+          setCustomEmailInput(customPart);
+        }
+      }
+    } catch {
+      // Error fetching MailSlurp config - using default
+    }
+  };
+
+  const updateMailSlurpEmail = async () => {
+    if (!customEmailInput.trim()) {
+      toast.error('Please enter a custom email');
+      return;
+    }
+
+    try {
+      setIsUpdatingEmail(true);
+      const response = await fetch('/api/mailslurp/email-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ customEmail: customEmailInput.trim() }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMailSlurpConfig(data.mailSlurp);
+        toast.success('MailSlurp email updated successfully');
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Failed to update email');
+      }
+    } catch {
+      toast.error('Error updating MailSlurp email');
+    } finally {
+      setIsUpdatingEmail(false);
     }
   };
 
@@ -774,6 +837,116 @@ export function StinaDashboard() {
                     Time buffer between consecutive meetings
                   </p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="w-5 h-5" />
+                MailSlurp Email Configuration
+              </CardTitle>
+              <CardDescription>
+                Configure your custom MailSlurp email address for receiving
+                meeting requests
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge
+                    variant={
+                      mailSlurpConfig.status === 'ready'
+                        ? 'default'
+                        : 'secondary'
+                    }
+                    className="text-xs"
+                  >
+                    {mailSlurpConfig.status === 'ready'
+                      ? 'Ready'
+                      : 'Setup Required'}
+                  </Badge>
+                  {mailSlurpConfig.status === 'ready' && (
+                    <Badge variant="outline" className="text-xs">
+                      Inbox ID: {mailSlurpConfig.inboxId.slice(0, 8)}...
+                    </Badge>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">
+                    Custom Email Address
+                  </label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Choose a custom prefix for your MailSlurp email address.
+                    Only letters, numbers, dots, underscores, and hyphens are
+                    allowed.
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="flex-1 flex">
+                      <input
+                        type="text"
+                        value={customEmailInput}
+                        onChange={(e) =>
+                          setCustomEmailInput(e.target.value.toLowerCase())
+                        }
+                        placeholder="my-meetings"
+                        className="flex-1 p-2 border rounded-l text-sm"
+                        disabled={isUpdatingEmail}
+                      />
+                      <div className="px-3 py-2 bg-muted border-t border-b border-r rounded-r text-sm text-muted-foreground">
+                        @mailslurp.io
+                      </div>
+                    </div>
+                    <Button
+                      onClick={updateMailSlurpEmail}
+                      disabled={isUpdatingEmail || !customEmailInput.trim()}
+                      size="sm"
+                    >
+                      {isUpdatingEmail ? (
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      ) : null}
+                      Update
+                    </Button>
+                  </div>
+                  {mailSlurpConfig.mailslurpEmail && (
+                    <p className="text-xs text-green-600 mt-2">
+                      Current email: {mailSlurpConfig.mailslurpEmail}
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-200">
+                  <h4 className="text-sm font-medium text-blue-800 mb-1">
+                    How it works
+                  </h4>
+                  <div className="text-xs text-blue-700 space-y-1">
+                    <p>
+                      • Your unique MailSlurp inbox automatically receives
+                      emails
+                    </p>
+                    <p>• The inbox ID is permanent and cannot be changed</p>
+                    <p>• You can customize the email prefix anytime</p>
+                    <p>
+                      • Send meeting requests to your custom email for AI
+                      processing
+                    </p>
+                  </div>
+                </div>
+
+                {mailSlurpConfig.status === 'not-setup' && (
+                  <div className="bg-amber-50 p-3 rounded-lg border-l-4 border-amber-200">
+                    <h4 className="text-sm font-medium text-amber-800 mb-1">
+                      Setup in Progress
+                    </h4>
+                    <p className="text-xs text-amber-700">
+                      Your MailSlurp inbox is being created in the background.
+                      This usually takes a few moments. Refresh the page if the
+                      status doesn&apos;t update automatically.
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -4,6 +4,100 @@ import { adminDb } from '@/config/firebase-admin';
 import { cookies } from 'next/headers';
 import { google } from 'googleapis';
 import crypto from 'crypto';
+import { MailSlurpService } from '@/services/mailslurp-service';
+
+/**
+ * Background function to create MailSlurp inbox for a new user
+ */
+async function createMailSlurpInboxForUser(
+  userEmail: string,
+  userName: string
+): Promise<void> {
+  try {
+    console.log(`Creating MailSlurp inbox for user: ${userEmail}`);
+
+    const mailSlurpService = new MailSlurpService();
+
+    // Generate a custom email based on user name, fallback to "inbox"
+    const customEmailBase =
+      userName
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'inbox';
+
+    // Add some uniqueness to avoid conflicts
+    const customEmail = `${customEmailBase}-${userEmail.split('@')[0]}`;
+
+    // Attempt to create the inbox
+    const inboxResult = await mailSlurpService.createInbox(customEmail);
+
+    let mailSlurpConfig;
+
+    if (inboxResult) {
+      // Success case
+      console.log(
+        `MailSlurp inbox created successfully for ${userEmail}:`,
+        inboxResult
+      );
+      mailSlurpConfig = {
+        status: 'ready' as const,
+        inboxId: inboxResult.inboxId,
+        mailslurpEmail: inboxResult.mailslurpEmail,
+      };
+    } else {
+      // Fallback case
+      console.log(
+        `MailSlurp inbox creation failed for ${userEmail}, using fallback`
+      );
+      const fallbackConfig = mailSlurpService.getFallbackInbox(customEmail);
+      mailSlurpConfig = {
+        status: 'ready' as const,
+        inboxId: fallbackConfig.inboxId,
+        mailslurpEmail: fallbackConfig.mailslurpEmail,
+      };
+    }
+
+    // Update the user document with the MailSlurp configuration
+    await adminDb.collection('users').doc(userEmail).update({
+      mailSlurp: mailSlurpConfig,
+      updatedAt: new Date().toISOString(),
+    });
+
+    console.log(
+      `MailSlurp configuration updated for ${userEmail}:`,
+      mailSlurpConfig
+    );
+  } catch (error) {
+    console.error(`Failed to create MailSlurp inbox for ${userEmail}:`, error);
+
+    // Even if creation fails completely, update to fallback
+    try {
+      const mailSlurpService = new MailSlurpService();
+      const customEmail = `fallback-${userEmail.split('@')[0]}`;
+      const fallbackConfig = mailSlurpService.getFallbackInbox(customEmail);
+
+      await adminDb
+        .collection('users')
+        .doc(userEmail)
+        .update({
+          mailSlurp: {
+            status: 'ready' as const,
+            inboxId: fallbackConfig.inboxId,
+            mailslurpEmail: fallbackConfig.mailslurpEmail,
+          },
+          updatedAt: new Date().toISOString(),
+        });
+
+      console.log(`Fallback MailSlurp configuration set for ${userEmail}`);
+    } catch (fallbackError) {
+      console.error(
+        `Failed to set fallback MailSlurp config for ${userEmail}:`,
+        fallbackError
+      );
+    }
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,12 +160,26 @@ export async function GET(request: NextRequest) {
       sessionToken,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      // Initialize MailSlurp config with not-setup status
+      mailSlurp: {
+        status: 'not-setup' as const,
+        inboxId: '',
+        mailslurpEmail: '',
+      },
     };
 
     await adminDb
       .collection('users')
       .doc(userInfo.email)
       .set(userDoc, { merge: true });
+
+    // Start background process to create MailSlurp inbox
+    // We don't await this to keep the auth flow fast
+    createMailSlurpInboxForUser(userInfo.email, userInfo.name || 'user').catch(
+      (error) => {
+        console.error('Background MailSlurp inbox creation failed:', error);
+      }
+    );
 
     // Set session cookie
     cookieStore.set('session_token', sessionToken, {

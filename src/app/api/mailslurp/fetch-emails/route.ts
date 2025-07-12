@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server';
 import { MailSlurp } from 'mailslurp-client';
+import { AuthService } from '@/services/auth-service';
+import { adminDb } from '@/config/firebase-admin';
 
-const INBOX_ID = '646c0933-0fdf-49dd-bc04-53514b1f0b2d';
+const FALLBACK_INBOX_ID = '646c0933-0fdf-49dd-bc04-53514b1f0b2d';
 
 export async function POST() {
   try {
+    const user = await AuthService.getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const apiKey = process.env.MAILSLURP_API_KEY;
 
     if (!apiKey) {
@@ -14,11 +24,30 @@ export async function POST() {
       );
     }
 
+    // Get user's MailSlurp configuration
+    const userDoc = await adminDb.collection('users').doc(user.email).get();
+    if (!userDoc.exists) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const userData = userDoc.data();
+    const mailSlurpConfig = userData?.mailSlurp;
+
+    // Use user's inbox ID or fallback to the hardcoded one
+    const inboxId = mailSlurpConfig?.inboxId || FALLBACK_INBOX_ID;
+
+    if (!inboxId) {
+      return NextResponse.json(
+        { error: 'MailSlurp inbox not configured for user' },
+        { status: 400 }
+      );
+    }
+
     const mailslurp = new MailSlurp({ apiKey });
 
-    // Fetch emails
+    // Fetch emails from user's specific inbox
     const emails = await mailslurp.emailController.getEmailsPaginated({
-      inboxId: [INBOX_ID],
+      inboxId: [inboxId],
       unreadOnly: false,
     });
 
