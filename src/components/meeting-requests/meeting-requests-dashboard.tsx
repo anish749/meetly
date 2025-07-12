@@ -252,7 +252,7 @@ export function MeetingRequestsDashboard() {
             />
             Refresh
           </Button>
-          <Button size="sm">
+          <Button size="sm" disabled>
             <Plus className="w-4 h-4 mr-2" />
             New Request
           </Button>
@@ -421,7 +421,9 @@ export function MeetingRequestsDashboard() {
                               <div className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {request.proposedTimes.length} time
-                                {request.proposedTimes.length !== 1 ? 's' : ''}{' '}
+                                {request.proposedTimes.length !== 1
+                                  ? 's'
+                                  : ''}{' '}
                                 proposed
                               </div>
                             )}
