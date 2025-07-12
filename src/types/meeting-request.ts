@@ -1,4 +1,8 @@
+import { EmailAnalystResult } from './email-analyst';
+
 export type MeetingRequestStatus =
+  | 'analysing_email'
+  | 'processing_with_stina'
   | 'context_collection'
   | 'scheduled'
   | 'rescheduled'
@@ -76,6 +80,7 @@ export interface MeetingRequest {
   scheduledEvent?: ScheduledEvent;
   communications: Communication[];
   metadata: MeetingRequestMetadata;
+  emailAnalystResponse?: EmailAnalystResult;
   createdAt: string;
   updatedAt: string;
 }
@@ -118,6 +123,8 @@ export const VALID_STATUS_TRANSITIONS: Record<
   MeetingRequestStatus,
   MeetingRequestStatus[]
 > = {
+  analysing_email: ['processing_with_stina', 'cancelled'],
+  processing_with_stina: ['context_collection', 'cancelled'],
   context_collection: ['scheduled', 'cancelled', 'pending_reply'],
   pending_reply: ['context_collection', 'scheduled', 'cancelled'],
   scheduled: ['rescheduled', 'completed', 'cancelled'],

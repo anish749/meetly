@@ -90,6 +90,18 @@ const statusConfig: Record<
     icon: XCircle,
     color: 'text-red-500',
   },
+  analysing_email: {
+    label: 'Analyzing Email',
+    variant: 'secondary',
+    icon: Brain,
+    color: 'text-purple-500',
+  },
+  processing_with_stina: {
+    label: 'Processing with AI',
+    variant: 'outline',
+    icon: Brain,
+    color: 'text-violet-500',
+  },
 };
 
 export function MeetingRequestsDashboard() {
@@ -103,6 +115,8 @@ export function MeetingRequestsDashboard() {
       rescheduled: 0,
       completed: 0,
       cancelled: 0,
+      analysing_email: 0,
+      processing_with_stina: 0,
     },
     recentActivity: 0,
   });

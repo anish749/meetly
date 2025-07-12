@@ -31,7 +31,6 @@ export class MeetingRequestService {
       const participants: MeetingRequestParticipant[] = [
         {
           email: emailContext.from,
-          name: undefined,
           isRegisteredUser: await this.isUserRegistered(emailContext.from),
           preferences: await this.getUserPreferences(emailContext.from),
         },
@@ -66,10 +65,13 @@ export class MeetingRequestService {
         updatedAt: new Date().toISOString(),
       };
 
+      // Filter out undefined values to prevent Firestore errors
+      const cleanMeetingRequest = this.removeUndefinedValues(meetingRequest);
+
       await adminDb
         .collection('meetingRequests')
         .doc(meetingRequestId)
-        .set(meetingRequest);
+        .set(cleanMeetingRequest);
 
       return meetingRequest;
     } catch (error) {
@@ -136,7 +138,8 @@ export class MeetingRequestService {
   }
 
   static async create(
-    payload: CreateMeetingRequestPayload
+    payload: CreateMeetingRequestPayload,
+    initialStatus: MeetingRequestStatus = 'context_collection'
   ): Promise<MeetingRequest> {
     try {
       const meetingRequestId = this.generateMeetingRequestId();
@@ -159,7 +162,7 @@ export class MeetingRequestService {
 
       const meetingRequest: MeetingRequest = {
         id: meetingRequestId,
-        status: 'context_collection',
+        status: initialStatus,
         participants,
         creator: payload.creator,
         context: payload.context,
@@ -484,10 +487,13 @@ Provide an updated context summary that captures all relevant meeting details.`,
         };
       }
 
+      // Filter out undefined values to prevent Firestore errors
+      const cleanUpdateData = this.removeUndefinedValues(updateData);
+
       await adminDb
         .collection('meetingRequests')
         .doc(requestId)
-        .update(updateData);
+        .update(cleanUpdateData);
 
       return (await this.getById(requestId)) as MeetingRequest;
     } catch (error) {
@@ -574,5 +580,23 @@ Proposed Times: ${meetingRequest.proposedTimes.length} time slots
 Communications: ${meetingRequest.communications.length} messages
 Metadata: ${JSON.stringify(meetingRequest.metadata, null, 2)}
 `;
+  }
+
+  private static removeUndefinedValues<T>(obj: T): T {
+    if (obj === null || typeof obj !== 'object') {
+      return obj;
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.removeUndefinedValues(item)) as T;
+    }
+
+    const result = {} as Record<string, unknown>;
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (value !== undefined) {
+        result[key] = this.removeUndefinedValues(value);
+      }
+    }
+    return result as T;
   }
 }
