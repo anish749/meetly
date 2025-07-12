@@ -16,6 +16,8 @@ interface User {
   sessionToken: string;
   createdAt: string;
   updatedAt: string;
+  mailslurpInboxId?: string;
+  mailslurpCustomEmail?: string;
 }
 
 export class AuthService {

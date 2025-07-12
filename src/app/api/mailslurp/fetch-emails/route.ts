@@ -1,10 +1,19 @@
 import { NextResponse } from 'next/server';
 import { MailSlurp } from 'mailslurp-client';
-
-const INBOX_ID = '646c0933-0fdf-49dd-bc04-53514b1f0b2d';
+import { AuthService } from '@/services/auth-service';
+import { adminDb } from '@/config/firebase-admin';
 
 export async function POST() {
   try {
+    // Verify user authentication
+    const user = await AuthService.getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const apiKey = process.env.MAILSLURP_API_KEY;
 
     if (!apiKey) {
@@ -14,11 +23,31 @@ export async function POST() {
       );
     }
 
+    // Get user's MailSlurp inbox ID
+    const userDoc = await adminDb.collection('users').doc(user.email).get();
+    
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
+
+    const userData = userDoc.data();
+    const inboxId = userData?.mailslurpInboxId;
+
+    if (!inboxId) {
+      return NextResponse.json(
+        { error: 'MailSlurp inbox not configured. Please set up your email address in preferences.' },
+        { status: 400 }
+      );
+    }
+
     const mailslurp = new MailSlurp({ apiKey });
 
     // Fetch emails
     const emails = await mailslurp.emailController.getEmailsPaginated({
-      inboxId: [INBOX_ID],
+      inboxId: [inboxId],
       unreadOnly: false,
     });
 

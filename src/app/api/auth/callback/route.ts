@@ -4,6 +4,7 @@ import { adminDb } from '@/config/firebase-admin';
 import { cookies } from 'next/headers';
 import { google } from 'googleapis';
 import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,8 +55,28 @@ export async function GET(request: NextRequest) {
     // Generate session token
     const sessionToken = crypto.randomBytes(32).toString('hex');
 
-    // Store tokens and user info in Firestore
-    const userDoc = {
+    // Check if user exists to determine if we need to generate inbox ID
+    const existingUserDoc = await adminDb
+      .collection('users')
+      .doc(userInfo.email)
+      .get();
+
+    const isNewUser = !existingUserDoc.exists;
+
+    // Prepare user document
+    const userDoc: {
+      email: string;
+      name: string | null | undefined;
+      picture: string | null | undefined;
+      googleId: string | null | undefined;
+      accessToken: string | null | undefined;
+      refreshToken: string | null | undefined;
+      expiryDate: number | null | undefined;
+      sessionToken: string;
+      updatedAt: string;
+      mailslurpInboxId?: string;
+      createdAt?: string;
+    } = {
       email: userInfo.email,
       name: userInfo.name,
       picture: userInfo.picture,
@@ -64,9 +85,14 @@ export async function GET(request: NextRequest) {
       refreshToken: tokens.refresh_token,
       expiryDate: tokens.expiry_date,
       sessionToken,
-      createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    // Generate MailSlurp inbox ID for new users
+    if (isNewUser) {
+      userDoc.mailslurpInboxId = uuidv4();
+      userDoc.createdAt = new Date().toISOString();
+    }
 
     await adminDb
       .collection('users')

@@ -64,6 +64,11 @@ interface EmailAnalysisState {
 
 type StinaPreferences = NonNullable<UserDocument['stinaPreferences']>;
 
+interface MailSlurpConfig {
+  inboxId: string | null;
+  customEmail: string | null;
+}
+
 export function StinaDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [unreadEmails, setUnreadEmails] = useState<EmailSummary[]>([]);
@@ -73,10 +78,17 @@ export function StinaDashboard() {
   const [expandedAnalysis, setExpandedAnalysis] = useState<Set<string>>(
     new Set()
   );
+  const [mailslurpConfig, setMailslurpConfig] = useState<MailSlurpConfig>({
+    inboxId: null,
+    customEmail: null,
+  });
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [newCustomEmail, setNewCustomEmail] = useState('');
 
   useEffect(() => {
     fetchEmailStatus();
     fetchPreferences();
+    fetchMailslurpConfig();
   }, []);
 
   const fetchEmailStatus = async () => {
@@ -108,6 +120,58 @@ export function StinaDashboard() {
       }
     } catch {
       // Error fetching preferences - using default empty object
+    }
+  };
+
+  const fetchMailslurpConfig = async () => {
+    try {
+      const response = await fetch('/api/mailslurp/email-config');
+      if (response.ok) {
+        const data = await response.json();
+        setMailslurpConfig({
+          inboxId: data.mailslurpInboxId,
+          customEmail: data.mailslurpCustomEmail,
+        });
+        setNewCustomEmail(data.mailslurpCustomEmail || '');
+      }
+    } catch {
+      // Error fetching mailslurp config - using default empty values
+    }
+  };
+
+  const updateMailslurpEmail = async () => {
+    if (!newCustomEmail.trim()) {
+      toast.error('Please enter a custom email');
+      return;
+    }
+
+    try {
+      setIsUpdatingEmail(true);
+      const response = await fetch('/api/mailslurp/email-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customEmail: newCustomEmail.trim(),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMailslurpConfig({
+          inboxId: data.mailslurpInboxId,
+          customEmail: data.mailslurpCustomEmail,
+        });
+        toast.success('MailSlurp email updated successfully');
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Failed to update email');
+      }
+    } catch {
+      toast.error('Error updating MailSlurp email');
+    } finally {
+      setIsUpdatingEmail(false);
     }
   };
 
@@ -773,6 +837,82 @@ export function StinaDashboard() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Time buffer between consecutive meetings
                   </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="w-5 h-5" />
+                MailSlurp Email Configuration
+              </CardTitle>
+              <CardDescription>
+                Configure your personalized email address for Stina to monitor
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">
+                    Inbox ID (Read-only)
+                  </label>
+                  <input
+                    type="text"
+                    value={mailslurpConfig.inboxId || 'Not configured'}
+                    readOnly
+                    className="w-full p-2 border rounded text-sm mt-2 bg-muted text-muted-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This unique identifier is automatically generated and cannot be changed
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">
+                    Custom Email Address
+                  </label>
+                  <div className="flex gap-2 mt-2">
+                    <input
+                      type="text"
+                      value={newCustomEmail}
+                      onChange={(e) => setNewCustomEmail(e.target.value)}
+                      placeholder="Enter custom email (e.g., my-meetings)"
+                      className="flex-1 p-2 border rounded text-sm"
+                    />
+                    <Button
+                      onClick={updateMailslurpEmail}
+                      disabled={isUpdatingEmail || !newCustomEmail.trim()}
+                      size="sm"
+                    >
+                      {isUpdatingEmail ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        'Update'
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Your full email will be: {newCustomEmail || 'custom-email'}@mailslurp.io
+                  </p>
+                  {mailslurpConfig.customEmail && (
+                    <p className="text-xs text-green-600 mt-1">
+                      ✓ Current email: {mailslurpConfig.customEmail}@mailslurp.io
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-blue-900 mb-2">
+                    How it works:
+                  </h4>
+                  <ul className="text-xs text-blue-700 space-y-1">
+                    <li>• Share your custom email address with meeting organizers</li>
+                    <li>• Stina monitors this inbox for meeting requests</li>
+                    <li>• AI analyzes emails and schedules meetings automatically</li>
+                    <li>• Your inbox ID ensures emails reach the right inbox</li>
+                  </ul>
                 </div>
               </div>
             </CardContent>
