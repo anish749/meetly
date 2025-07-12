@@ -164,7 +164,7 @@ export function StinaDashboard() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-sm font-medium">
-                {unreadEmails.length} unread emails
+                {unreadEmails.length} total emails
               </p>
               {lastProcessed && (
                 <p className="text-xs text-muted-foreground">

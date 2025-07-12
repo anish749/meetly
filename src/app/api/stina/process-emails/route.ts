@@ -124,12 +124,12 @@ export async function GET() {
 
     const emails = await mailslurp.emailController.getEmailsPaginated({
       inboxId: [INBOX_ID],
-      unreadOnly: true,
+      unreadOnly: false,
     });
 
     return NextResponse.json({
       success: true,
-      unreadCount: emails.content?.length || 0,
+      totalCount: emails.content?.length || 0,
       emails:
         emails.content?.map((email) => ({
           id: email.id,
