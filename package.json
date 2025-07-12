@@ -12,6 +12,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.56.0",
     "@hookform/resolvers": "^5.1.1",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-dialog": "^1.1.14",
