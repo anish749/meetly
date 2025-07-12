@@ -1,6 +1,7 @@
 import { GoogleCalendarService } from './google-calendar-service';
 import { adminDb } from '@/config/firebase-admin';
 import { ContactInfo } from './stina-agent';
+import { MeetingRequestService } from './meeting-request-service';
 import { z } from 'zod';
 
 export interface ToolCallResult {
@@ -13,34 +14,82 @@ export interface ToolCallResult {
 export const calendarCheckScheduleSchema = z.object({
   start: z.string().describe('ISO-8601 start of the window (user TZ).'),
   end: z.string().describe('ISO-8601 end of the window.'),
-  duration_minutes: z.number().min(15).max(240).describe('Desired meeting length in minutes.')
+  duration_minutes: z
+    .number()
+    .min(15)
+    .max(240)
+    .describe('Desired meeting length in minutes.'),
 });
 
 export const venuesFindSchema = z.object({
-  location: z.string().describe('Free-form place name such as \'Elephant & Castle, London\' or \'EC2V 7HH\'.'),
-  tags: z.array(z.string()).describe('Purpose keywords, e.g. [\'coffee\'], [\'lunch\'], [\'meeting_room\'].'),
-  radius_m: z.number().default(2000).describe('Search radius in metres (max 5000).'),
-  limit: z.number().min(1).max(10).default(5).describe('Maximum number of venues to return.')
+  location: z
+    .string()
+    .describe(
+      "Free-form place name such as 'Elephant & Castle, London' or 'EC2V 7HH'."
+    ),
+  tags: z
+    .array(z.string())
+    .describe(
+      "Purpose keywords, e.g. ['coffee'], ['lunch'], ['meeting_room']."
+    ),
+  radius_m: z
+    .number()
+    .default(2000)
+    .describe('Search radius in metres (max 5000).'),
+  limit: z
+    .number()
+    .min(1)
+    .max(10)
+    .default(5)
+    .describe('Maximum number of venues to return.'),
 });
 
 export const commsSendEmailSchema = z.object({
   to: z.array(z.string().email()).describe('Recipient e-mail address(es).'),
   subject: z.string().describe('E-mail subject line.'),
   body: z.string().describe('Plain-text or simple HTML body.'),
-  thread_id: z.string().nullable().optional().describe('Existing thread ID if replying.'),
-  watch: z.boolean().default(false).describe('If true, backend will watch this thread for replies.')
+  thread_id: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Existing thread ID if replying.'),
+  watch: z
+    .boolean()
+    .default(false)
+    .describe('If true, backend will watch this thread for replies.'),
 });
 
-export const backendUpdateSessionSchema = z.object({
-  session_id: z.string().describe('Unique UUID for this scheduling session.'),
-  status: z.enum(['INITIATING', 'TIME_PROPOSED', 'TIME_CONFIRMED', 'VENUE_PROPOSED', 'CALENDAR_BOOKED', 'COMPLETED']).describe('One of the workflow states.'),
+export const backendUpdateMeetingRequestSchema = z.object({
+  meeting_request_id: z
+    .string()
+    .describe('Unique ID for this meeting request.'),
+  status: z
+    .enum([
+      'context_collection',
+      'scheduled',
+      'rescheduled',
+      'completed',
+      'cancelled',
+      'pending_reply',
+    ])
+    .describe('One of the meeting request states.'),
   progress: z.number().min(0).max(100).describe('Progress bar value (0-100).'),
-  note: z.string().optional().describe('Optional free-text note for dashboards.')
+  note: z
+    .string()
+    .optional()
+    .describe('Optional free-text note for dashboards.'),
 });
 
 export const peopleGetPersonDetailsSchema = z.object({
-  identifier: z.string().describe('Either an email address or a full name to look up.'),
-  strict: z.boolean().default(false).describe('If true, fail when no exact match is found; if false, return the closest match.')
+  identifier: z
+    .string()
+    .describe('Either an email address or a full name to look up.'),
+  strict: z
+    .boolean()
+    .default(false)
+    .describe(
+      'If true, fail when no exact match is found; if false, return the closest match.'
+    ),
 });
 
 export class StinaTools {
@@ -68,9 +117,9 @@ export class StinaTools {
           return await this.commsSendEmail(
             parameters as z.infer<typeof commsSendEmailSchema>
           );
-        case 'backend_update_session':
-          return await this.backendUpdateSession(
-            parameters as z.infer<typeof backendUpdateSessionSchema>
+        case 'backend_update_meeting_request':
+          return await this.backendUpdateMeetingRequest(
+            parameters as z.infer<typeof backendUpdateMeetingRequestSchema>
           );
         case 'people_get_person_details':
           return await this.peopleGetPersonDetails(
@@ -90,7 +139,9 @@ export class StinaTools {
     }
   }
 
-  private async calendarCheckSchedule(parameters: z.infer<typeof calendarCheckScheduleSchema>): Promise<ToolCallResult> {
+  private async calendarCheckSchedule(
+    parameters: z.infer<typeof calendarCheckScheduleSchema>
+  ): Promise<ToolCallResult> {
     try {
       const calendarService = new GoogleCalendarService(this.userEmail);
 
@@ -107,7 +158,13 @@ export class StinaTools {
       });
 
       // Find available slots for the requested duration
-      const availableSlots = this.findAvailableSlots(freeBusy, events, parameters.duration_minutes, parameters.start, parameters.end);
+      const availableSlots = this.findAvailableSlots(
+        freeBusy,
+        events,
+        parameters.duration_minutes,
+        parameters.start,
+        parameters.end
+      );
 
       return {
         success: true,
@@ -121,7 +178,10 @@ export class StinaTools {
             end: event.end,
             attendees: event.attendees?.map((a) => a.email) || [],
           })),
-          recommendations: this.generateSchedulingRecommendations(availableSlots, parameters.duration_minutes),
+          recommendations: this.generateSchedulingRecommendations(
+            availableSlots,
+            parameters.duration_minutes
+          ),
         },
       };
     } catch (error) {
@@ -132,12 +192,17 @@ export class StinaTools {
     }
   }
 
-
-  private async venuesFind(parameters: z.infer<typeof venuesFindSchema>): Promise<ToolCallResult> {
+  private async venuesFind(
+    parameters: z.infer<typeof venuesFindSchema>
+  ): Promise<ToolCallResult> {
     try {
       // In a real implementation, this would integrate with Google Places API or similar
       // For demo purposes, we'll return mock data
-      const venues = this.getMockVenues(parameters.tags, parameters.location, parameters.limit);
+      const venues = this.getMockVenues(
+        parameters.tags,
+        parameters.location,
+        parameters.limit
+      );
 
       return {
         success: true,
@@ -160,7 +225,9 @@ export class StinaTools {
     }
   }
 
-  private async commsSendEmail(parameters: z.infer<typeof commsSendEmailSchema>): Promise<ToolCallResult> {
+  private async commsSendEmail(
+    parameters: z.infer<typeof commsSendEmailSchema>
+  ): Promise<ToolCallResult> {
     try {
       // Mock implementation - in real app would integrate with email service
       const emailData = {
@@ -171,7 +238,7 @@ export class StinaTools {
         thread_id: parameters.thread_id,
         timestamp: new Date().toISOString(),
         status: 'sent',
-        watch: parameters.watch
+        watch: parameters.watch,
       };
 
       // Store in database for tracking
@@ -184,7 +251,7 @@ export class StinaTools {
           .set({
             ...emailData,
             watching: true,
-            user_email: this.userEmail
+            user_email: this.userEmail,
           });
       }
 
@@ -196,7 +263,8 @@ export class StinaTools {
           recipients: parameters.to,
           subject: parameters.subject,
           watching: parameters.watch,
-          message: 'Email sent successfully. Recipient will receive scheduling proposal.'
+          message:
+            'Email sent successfully. Recipient will receive scheduling proposal.',
         },
       };
     } catch (error) {
@@ -207,39 +275,36 @@ export class StinaTools {
     }
   }
 
-  private async backendUpdateSession(parameters: z.infer<typeof backendUpdateSessionSchema>): Promise<ToolCallResult> {
+  private async backendUpdateMeetingRequest(
+    parameters: z.infer<typeof backendUpdateMeetingRequestSchema>
+  ): Promise<ToolCallResult> {
     try {
-      const sessionData = {
-        session_id: parameters.session_id,
-        status: parameters.status,
-        progress: parameters.progress,
-        note: parameters.note,
-        updated_at: new Date().toISOString(),
-        user_email: this.userEmail
-      };
-
-      // Store session state in database
-      await adminDb
-        .collection('users')
-        .doc(this.userEmail)
-        .collection('stina_sessions')
-        .doc(parameters.session_id)
-        .set(sessionData, { merge: true });
+      await MeetingRequestService.updateStatus(
+        parameters.meeting_request_id,
+        parameters.status,
+        {
+          progress: parameters.progress,
+          note: parameters.note,
+        }
+      );
 
       return {
         success: true,
         data: {
-          session_id: parameters.session_id,
+          meeting_request_id: parameters.meeting_request_id,
           status: parameters.status,
           progress: parameters.progress,
           note: parameters.note,
-          message: `Session updated to ${parameters.status} (${parameters.progress}%)`
+          message: `Meeting request updated to ${parameters.status} (${parameters.progress}%)`,
         },
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Session update failed',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Meeting request update failed',
       };
     }
   }
@@ -255,7 +320,7 @@ export class StinaTools {
     const startDate = new Date(start);
     const endDate = new Date(end);
     const slots = [];
-    
+
     // Generate some mock available slots
     const currentDate = new Date(startDate);
     while (currentDate < endDate && slots.length < 5) {
@@ -266,28 +331,28 @@ export class StinaTools {
         morningSlot.setHours(10, 0, 0, 0);
         const morningEnd = new Date(morningSlot);
         morningEnd.setMinutes(morningEnd.getMinutes() + durationMinutes);
-        
+
         slots.push({
           start: morningSlot.toISOString(),
           end: morningEnd.toISOString(),
-          confidence: 'high'
+          confidence: 'high',
         });
-        
+
         // Afternoon slot (2:00 PM)
         const afternoonSlot = new Date(currentDate);
         afternoonSlot.setHours(14, 0, 0, 0);
         const afternoonEnd = new Date(afternoonSlot);
         afternoonEnd.setMinutes(afternoonEnd.getMinutes() + durationMinutes);
-        
+
         slots.push({
           start: afternoonSlot.toISOString(),
           end: afternoonEnd.toISOString(),
-          confidence: 'medium'
+          confidence: 'medium',
         });
       }
       currentDate.setDate(currentDate.getDate() + 1);
     }
-    
+
     return slots.slice(0, 3); // Return top 3 slots
   }
 
@@ -296,23 +361,37 @@ export class StinaTools {
     durationMinutes: number
   ): string[] {
     const recommendations = [];
-    
+
     if (availableSlots.length === 0) {
-      recommendations.push('No available slots found in the requested timeframe.');
-      recommendations.push('Consider expanding the date range or reducing meeting duration.');
+      recommendations.push(
+        'No available slots found in the requested timeframe.'
+      );
+      recommendations.push(
+        'Consider expanding the date range or reducing meeting duration.'
+      );
       return recommendations;
     }
-    
-    recommendations.push(`Found ${availableSlots.length} potential meeting slots for ${durationMinutes} minute duration.`);
-    
-    const highConfidenceSlots = availableSlots.filter(slot => slot.confidence === 'high');
+
+    recommendations.push(
+      `Found ${availableSlots.length} potential meeting slots for ${durationMinutes} minute duration.`
+    );
+
+    const highConfidenceSlots = availableSlots.filter(
+      (slot) => slot.confidence === 'high'
+    );
     if (highConfidenceSlots.length > 0) {
-      recommendations.push(`${highConfidenceSlots.length} high-confidence slots available with no conflicts.`);
+      recommendations.push(
+        `${highConfidenceSlots.length} high-confidence slots available with no conflicts.`
+      );
     }
-    
-    recommendations.push('Morning slots (10:00 AM) typically have higher focus and energy.');
-    recommendations.push('Allow 15-minute buffer between meetings for transitions.');
-    
+
+    recommendations.push(
+      'Morning slots (10:00 AM) typically have higher focus and energy.'
+    );
+    recommendations.push(
+      'Allow 15-minute buffer between meetings for transitions.'
+    );
+
     return recommendations;
   }
 
@@ -344,7 +423,12 @@ export class StinaTools {
         rating: 4.3,
         distance_m: 300,
         tags: ['lunch', 'restaurant', 'business'],
-        features: ['Private dining', 'Business-friendly', 'Parking', 'Quick service'],
+        features: [
+          'Private dining',
+          'Business-friendly',
+          'Parking',
+          'Quick service',
+        ],
       },
       {
         name: 'Downtown Conference Center',
@@ -373,14 +457,12 @@ export class StinaTools {
     ];
 
     // Filter venues based on tags
-    const filteredVenues = allVenues.filter(venue => 
-      tags.some(tag => venue.tags.includes(tag))
+    const filteredVenues = allVenues.filter((venue) =>
+      tags.some((tag) => venue.tags.includes(tag))
     );
 
     // Sort by rating and distance, return up to limit
-    return filteredVenues
-      .sort((a, b) => b.rating - a.rating)
-      .slice(0, limit);
+    return filteredVenues.sort((a, b) => b.rating - a.rating).slice(0, limit);
   }
 
   private generateVenueRecommendations(
@@ -414,26 +496,30 @@ export class StinaTools {
       );
       recommendations.push('Consider noise levels for important discussions.');
     }
-    
+
     if (tags.includes('lunch') || tags.includes('restaurant')) {
       recommendations.push('Make reservations in advance for business meals.');
       recommendations.push('Choose venues with separate billing options.');
     }
-    
+
     if (tags.includes('meeting_room')) {
-      recommendations.push('Book meeting rooms in advance for guaranteed availability.');
+      recommendations.push(
+        'Book meeting rooms in advance for guaranteed availability.'
+      );
       recommendations.push('Confirm AV equipment and setup requirements.');
     }
 
     return recommendations;
   }
 
-  private async peopleGetPersonDetails(parameters: z.infer<typeof peopleGetPersonDetailsSchema>): Promise<ToolCallResult> {
+  private async peopleGetPersonDetails(
+    parameters: z.infer<typeof peopleGetPersonDetailsSchema>
+  ): Promise<ToolCallResult> {
     try {
       // Try to parse as email first, then search by name
       const isEmail = parameters.identifier.includes('@');
       let contactDoc;
-      
+
       if (isEmail) {
         contactDoc = await adminDb
           .collection('users')
@@ -450,7 +536,7 @@ export class StinaTools {
           .where('name', '==', parameters.identifier)
           .limit(1)
           .get();
-        
+
         contactDoc = contactsSnapshot.docs[0];
       }
 
@@ -461,7 +547,7 @@ export class StinaTools {
             error: `No exact match found for: ${parameters.identifier}`,
           };
         }
-        
+
         // Return mock enriched data for demonstration
         return {
           success: true,
@@ -475,7 +561,7 @@ export class StinaTools {
             working_hours: { start: '09:00', end: '17:00' },
             meeting_preferences: ['virtual', 'in-person'],
             last_interaction: null,
-            enrichment_source: 'mock_data'
+            enrichment_source: 'mock_data',
           },
         };
       }
@@ -491,10 +577,15 @@ export class StinaTools {
           title: contactData.role || 'Professional',
           company: contactData.company || 'Unknown Company',
           timezone: contactData.preferences?.timeZone || 'Europe/London',
-          working_hours: contactData.preferences?.workingHours || { start: '09:00', end: '17:00' },
-          meeting_preferences: [contactData.preferences?.meetingType || 'virtual'],
+          working_hours: contactData.preferences?.workingHours || {
+            start: '09:00',
+            end: '17:00',
+          },
+          meeting_preferences: [
+            contactData.preferences?.meetingType || 'virtual',
+          ],
           last_interaction: contactData.pastMeetings?.[0]?.date || null,
-          enrichment_source: 'stored_contact'
+          enrichment_source: 'stored_contact',
         },
       };
     } catch {
@@ -504,6 +595,4 @@ export class StinaTools {
       };
     }
   }
-
-
 }

@@ -1,14 +1,15 @@
 import { generateText, generateObject, tool } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { adminDb } from '@/config/firebase-admin';
-import { 
-  StinaTools, 
+import {
+  StinaTools,
   calendarCheckScheduleSchema,
   venuesFindSchema,
   commsSendEmailSchema,
-  backendUpdateSessionSchema,
-  peopleGetPersonDetailsSchema
+  backendUpdateMeetingRequestSchema,
+  peopleGetPersonDetailsSchema,
 } from './stina-tools';
+import { MeetingRequestService } from './meeting-request-service';
 import { z } from 'zod';
 
 // System prompt for Stina AI Agent
@@ -24,7 +25,7 @@ Super-powers (tool calls)
 • calendar_check_schedule  – retrieve the user's free blocks in a date range  
 • venues_find              – suggest 3-5 suitable meeting spots near a coordinate  
 • comms_send_email         – start or reply to an email thread as the user's alias  
-• backend_update_session   – persist the current session status, progress % and a note
+• backend_update_meeting_request   – persist the current meeting request status, progress % and a note
 • people_get_person_details - Gets the person's details
 
 *(These are the **only** side-effect tools available.)*
@@ -35,12 +36,12 @@ Workflow
 2. **Check availability.** Call **calendar_check_schedule** to pick 2-3 candidate slots that respect the user's preferences (passed in the context).  
 3. **Suggest venues** when the meeting is in-person and no location is fixed. Call **venues_find** around the midpoint of participants' postcodes, filtered by tags such as *coffee* or *lunch*.  
 4. **Propose the meeting.**  
-   • Call **backend_update_session** → \`TIME_PROPOSED\`, progress ≈ 30 %.  
+   • Call **backend_update_meeting_request** → \`context_collection\`, progress ≈ 30 %.  
    • Call **comms_send_email** to the invitee(s) listing the proposed slots (and venues if any).  
-   • Call **backend_update_session** again → note "Waiting for reply".  
+   • Call **backend_update_meeting_request** again → \`pending_reply\`, note "Waiting for reply".  
 5. **Loop.** When a reply arrives, repeat steps 1-4 until both time and (if needed) venue are agreed.  
-6. **Book it.** Once confirmed, call **backend_update_session** → \`CALENDAR_BOOKED\`, progress ≈ 90 %, and send a confirmation email.  
-7. **Finish.** Call **backend_update_session** → \`COMPLETED\`, progress = 100 %.
+6. **Book it.** Once confirmed, call **backend_update_meeting_request** → \`scheduled\`, progress ≈ 90 %, and send a confirmation email.  
+7. **Finish.** Call **backend_update_meeting_request** → \`completed\`, progress = 100 %.
 
 Etiquette
 ---------
@@ -51,9 +52,9 @@ Etiquette
 
 Safety Rails
 ------------
-• Never invent tool names or parameters beyond the four above.  
+• Never invent tool names or parameters beyond the five above.  
 • Never expose raw JSON or internal reasoning to human recipients.  
-• If an external tool call fails, describe the failure in a follow-up **backend_update_session** note and wait for the next instruction.`;
+• If an external tool call fails, describe the failure in a follow-up **backend_update_meeting_request** note and wait for the next instruction.`;
 
 export interface StinaContext {
   userEmail: string;
@@ -252,13 +253,16 @@ export class StinaAgent {
 
   async processEmailWithAI(email: EmailContext): Promise<void> {
     console.log('Processing email with AI - ', email.subject);
-    
-    // Generate a unique session ID for this interaction
-    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
+    // Create a meeting request for this email interaction
+    const meetingRequest = await MeetingRequestService.createFromEmail(
+      email,
+      this.userEmail
+    );
+
     // Create context string for the AI
     const contextString = this.buildContextString();
-    
+
     try {
       const result = await generateText({
         model: anthropic('claude-3-5-sonnet-20241022'),
@@ -274,69 +278,86 @@ From: ${email.from}
 Body: ${email.body}
 Received: ${email.createdAt}
 
-Session ID for tracking: ${sessionId}
+Meeting Request ID for tracking: ${meetingRequest.id}
 
 Please analyze this email and take appropriate actions according to your workflow.`,
         maxSteps: 20,
         tools: {
           calendar_check_schedule: tool({
-            description: 'Check the user\'s schedule',
+            description: "Check the user's schedule",
             parameters: calendarCheckScheduleSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('calendar_check_schedule', params);
+              const result = await this.stinaTools.executeToolCall(
+                'calendar_check_schedule',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
           venues_find: tool({
-            description: 'Return up to limit venues that match the given tags near the supplied place-name',
+            description:
+              'Return up to limit venues that match the given tags near the supplied place-name',
             parameters: venuesFindSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('venues_find', params);
+              const result = await this.stinaTools.executeToolCall(
+                'venues_find',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
           comms_send_email: tool({
-            description: 'Send a new e-mail or reply in an existing thread on the user\'s behalf',
+            description:
+              "Send a new e-mail or reply in an existing thread on the user's behalf",
             parameters: commsSendEmailSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('comms_send_email', params);
+              const result = await this.stinaTools.executeToolCall(
+                'comms_send_email',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
-          backend_update_session: tool({
-            description: 'Updates the session\'s status',
-            parameters: backendUpdateSessionSchema,
+          backend_update_meeting_request: tool({
+            description: "Updates the meeting request's status",
+            parameters: backendUpdateMeetingRequestSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('backend_update_session', params);
+              const result = await this.stinaTools.executeToolCall(
+                'backend_update_meeting_request',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
           people_get_person_details: tool({
-            description: 'Retrieve enriched contact information for the person the user wants to meet',
+            description:
+              'Retrieve enriched contact information for the person the user wants to meet',
             parameters: peopleGetPersonDetailsSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('people_get_person_details', params);
+              const result = await this.stinaTools.executeToolCall(
+                'people_get_person_details',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
         },
       });
-      
+
       console.log('AI processing result:', result.text);
       console.log('Tools used:', result.steps.length, 'steps');
-      
+
       // Store the processing result
-      await this.storeProcessingResult(email, sessionId, result);
-      
+      await this.storeProcessingResult(email, meetingRequest.id, result);
     } catch (error) {
       console.error('Error in AI processing:', error);
-      
-      // Update session with error status
-      await this.stinaTools.executeToolCall('backend_update_session', {
-        session_id: sessionId,
-        status: 'INITIATING',
+
+      // Update meeting request with error status
+      await this.stinaTools.executeToolCall('backend_update_meeting_request', {
+        meeting_request_id: meetingRequest.id,
+        status: 'context_collection',
         progress: 0,
-        note: `Error processing email: ${error instanceof Error ? error.message : 'Unknown error'}`
+        note: `Error processing email: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }
   }
@@ -355,13 +376,13 @@ Please analyze this email and take appropriate actions according to your workflo
   }
 
   private async storeProcessingResult(
-    email: EmailContext, 
-    sessionId: string, 
+    email: EmailContext,
+    meetingRequestId: string,
     result: {
       text: string;
       steps: Array<{
-        toolCalls?: Array<{ toolName: string }>
-      }>
+        toolCalls?: Array<{ toolName: string }>;
+      }>;
     }
   ): Promise<void> {
     try {
@@ -372,30 +393,25 @@ Please analyze this email and take appropriate actions according to your workflo
         .doc(email.id)
         .set({
           email_id: email.id,
-          session_id: sessionId,
+          meeting_request_id: meetingRequestId,
           subject: email.subject,
           from: email.from,
           processed_at: new Date().toISOString(),
           ai_response: result.text,
           steps_taken: result.steps.length,
-          tools_used: result.steps.map((step) => step.toolCalls?.map((call) => call.toolName) || []).flat(),
-          processing_status: 'completed'
+          tools_used: result.steps
+            .map((step) => step.toolCalls?.map((call) => call.toolName) || [])
+            .flat(),
+          processing_status: 'completed',
         });
     } catch (error) {
       console.error('Error storing processing result:', error);
     }
   }
 
-
-
-
-
-
-
-
-
-
-  async extractMeetingDetails(email: EmailContext): Promise<MeetingIntent | null> {
+  async extractMeetingDetails(
+    email: EmailContext
+  ): Promise<MeetingIntent | null> {
     try {
       const meetingSchema = z.object({
         is_meeting_request: z.boolean(),
@@ -407,10 +423,11 @@ Please analyze this email and take appropriate actions according to your workflo
         agenda: z.string().optional(),
         urgency: z.enum(['low', 'medium', 'high']).optional(),
       });
-      
+
       const result = await generateObject({
         model: anthropic('claude-3-5-sonnet-20241022'),
-        system: 'You are an expert at extracting meeting details from emails. Extract structured information about meeting requests.',
+        system:
+          'You are an expert at extracting meeting details from emails. Extract structured information about meeting requests.',
         prompt: `
 Analyze this email and extract meeting details if this is a meeting request:
 
@@ -421,13 +438,13 @@ Body: ${email.body}
 If this is a meeting request, extract the details. If not, set is_meeting_request to false.`,
         schema: meetingSchema,
       });
-      
+
       const extractedData = result.object as z.infer<typeof meetingSchema>;
-      
+
       if (!extractedData.is_meeting_request) {
         return null;
       }
-      
+
       return {
         participants: extractedData.participants || [],
         duration: extractedData.duration || 60,
