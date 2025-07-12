@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface CalendarEvent {
   id: string;
@@ -74,6 +75,11 @@ export default function DashboardPage() {
               Meetly Dashboard
             </h1>
             <div className="flex items-center gap-4">
+              <Link href="/preferences">
+                <Button variant="ghost" size="sm">
+                  Preferences
+                </Button>
+              </Link>
               {user?.picture && (
                 <Image
                   src={user.picture}
