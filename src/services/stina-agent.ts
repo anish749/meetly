@@ -1,14 +1,15 @@
 import { generateText, generateObject, tool } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { adminDb } from '@/config/firebase-admin';
-import { 
-  StinaTools, 
+import {
+  StinaTools,
   calendarCheckScheduleSchema,
   venuesFindSchema,
   commsSendEmailSchema,
   backendUpdateSessionSchema,
-  peopleGetPersonDetailsSchema
+  peopleGetPersonDetailsSchema,
 } from './stina-tools';
+import { EmailAnalysisResult } from './email-analyst';
 import { z } from 'zod';
 
 // System prompt for Stina AI Agent
@@ -252,13 +253,13 @@ export class StinaAgent {
 
   async processEmailWithAI(email: EmailContext): Promise<void> {
     console.log('Processing email with AI - ', email.subject);
-    
+
     // Generate a unique session ID for this interaction
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Create context string for the AI
     const contextString = this.buildContextString();
-    
+
     try {
       const result = await generateText({
         model: anthropic('claude-3-5-sonnet-20241022'),
@@ -280,63 +281,80 @@ Please analyze this email and take appropriate actions according to your workflo
         maxSteps: 20,
         tools: {
           calendar_check_schedule: tool({
-            description: 'Check the user\'s schedule',
+            description: "Check the user's schedule",
             parameters: calendarCheckScheduleSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('calendar_check_schedule', params);
+              const result = await this.stinaTools.executeToolCall(
+                'calendar_check_schedule',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
           venues_find: tool({
-            description: 'Return up to limit venues that match the given tags near the supplied place-name',
+            description:
+              'Return up to limit venues that match the given tags near the supplied place-name',
             parameters: venuesFindSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('venues_find', params);
+              const result = await this.stinaTools.executeToolCall(
+                'venues_find',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
           comms_send_email: tool({
-            description: 'Send a new e-mail or reply in an existing thread on the user\'s behalf',
+            description:
+              "Send a new e-mail or reply in an existing thread on the user's behalf",
             parameters: commsSendEmailSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('comms_send_email', params);
+              const result = await this.stinaTools.executeToolCall(
+                'comms_send_email',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
           backend_update_session: tool({
-            description: 'Updates the session\'s status',
+            description: "Updates the session's status",
             parameters: backendUpdateSessionSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('backend_update_session', params);
+              const result = await this.stinaTools.executeToolCall(
+                'backend_update_session',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
           people_get_person_details: tool({
-            description: 'Retrieve enriched contact information for the person the user wants to meet',
+            description:
+              'Retrieve enriched contact information for the person the user wants to meet',
             parameters: peopleGetPersonDetailsSchema,
             execute: async (params) => {
-              const result = await this.stinaTools.executeToolCall('people_get_person_details', params);
+              const result = await this.stinaTools.executeToolCall(
+                'people_get_person_details',
+                params
+              );
               return result.data || { error: result.error };
             },
           }),
         },
       });
-      
+
       console.log('AI processing result:', result.text);
       console.log('Tools used:', result.steps.length, 'steps');
-      
+
       // Store the processing result
       await this.storeProcessingResult(email, sessionId, result);
-      
     } catch (error) {
       console.error('Error in AI processing:', error);
-      
+
       // Update session with error status
       await this.stinaTools.executeToolCall('backend_update_session', {
         session_id: sessionId,
         status: 'INITIATING',
         progress: 0,
-        note: `Error processing email: ${error instanceof Error ? error.message : 'Unknown error'}`
+        note: `Error processing email: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }
   }
@@ -355,13 +373,13 @@ Please analyze this email and take appropriate actions according to your workflo
   }
 
   private async storeProcessingResult(
-    email: EmailContext, 
-    sessionId: string, 
+    email: EmailContext,
+    sessionId: string,
     result: {
       text: string;
       steps: Array<{
-        toolCalls?: Array<{ toolName: string }>
-      }>
+        toolCalls?: Array<{ toolName: string }>;
+      }>;
     }
   ): Promise<void> {
     try {
@@ -378,24 +396,186 @@ Please analyze this email and take appropriate actions according to your workflo
           processed_at: new Date().toISOString(),
           ai_response: result.text,
           steps_taken: result.steps.length,
-          tools_used: result.steps.map((step) => step.toolCalls?.map((call) => call.toolName) || []).flat(),
-          processing_status: 'completed'
+          tools_used: result.steps
+            .map((step) => step.toolCalls?.map((call) => call.toolName) || [])
+            .flat(),
+          processing_status: 'completed',
         });
     } catch (error) {
       console.error('Error storing processing result:', error);
     }
   }
 
+  /**
+   * Process email with pre-analyzed data from Email Analyst
+   */
+  async processEmailWithAnalysis(
+    email: EmailContext,
+    analysisResult: EmailAnalysisResult
+  ): Promise<void> {
+    console.log('Processing email with analysis - ', email.subject);
 
+    // Generate a unique session ID for this interaction
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    // Create context string for the AI
+    const contextString = this.buildContextString();
 
+    // Format the analysis result for the AI
+    const analysisString = `
+Email Analysis Results:
+- Initiator: ${analysisResult.initiator.name} (${analysisResult.initiator.email})
+- Invitees: ${analysisResult.invitees.map((inv) => `${inv.name || 'Unknown'} (${inv.email})`).join(', ')}
+- Meeting Intent: ${analysisResult.meeting_intent}
+- Requested Timeframe: ${analysisResult.requested_timeframe || 'Not specified'}
+- Duration: ${analysisResult.duration_minutes ? `${analysisResult.duration_minutes} minutes` : 'Not specified'}
+- Location Hint: ${analysisResult.location_hint || 'Not specified'}
+- Other Notes: ${analysisResult.other_notes || 'None'}`;
 
+    try {
+      const result = await generateText({
+        model: anthropic('claude-3-5-sonnet-20241022'),
+        system: STINA_SYSTEM_PROMPT,
+        prompt: `
+Context about the user:
+${contextString}
 
+Email Analysis (pre-processed):
+${analysisString}
 
+Original Email:
+Subject: ${email.subject}
+From: ${email.from}
+Body: ${email.body}
+Received: ${email.createdAt}
 
+Session ID for tracking: ${sessionId}
 
+The email has been pre-analyzed to extract meeting scheduling information. Use this structured analysis to efficiently process the meeting request according to your workflow. Focus on the extracted details rather than re-analyzing the email content.`,
+        maxSteps: 20,
+        tools: {
+          calendar_check_schedule: tool({
+            description: "Check the user's schedule",
+            parameters: calendarCheckScheduleSchema,
+            execute: async (params) => {
+              const result = await this.stinaTools.executeToolCall(
+                'calendar_check_schedule',
+                params
+              );
+              return result.data || { error: result.error };
+            },
+          }),
+          venues_find: tool({
+            description: 'Find nearby venues',
+            parameters: venuesFindSchema,
+            execute: async (params) => {
+              const result = await this.stinaTools.executeToolCall(
+                'venues_find',
+                params
+              );
+              return result.data || { error: result.error };
+            },
+          }),
+          comms_send_email: tool({
+            description: 'Send an email response',
+            parameters: commsSendEmailSchema,
+            execute: async (params) => {
+              const result = await this.stinaTools.executeToolCall(
+                'comms_send_email',
+                params
+              );
+              return result.data || { error: result.error };
+            },
+          }),
+          backend_update_session: tool({
+            description: "Updates the session's status",
+            parameters: backendUpdateSessionSchema,
+            execute: async (params) => {
+              const result = await this.stinaTools.executeToolCall(
+                'backend_update_session',
+                params
+              );
+              return result.data || { error: result.error };
+            },
+          }),
+          people_get_person_details: tool({
+            description:
+              'Retrieve enriched contact information for the person the user wants to meet',
+            parameters: peopleGetPersonDetailsSchema,
+            execute: async (params) => {
+              const result = await this.stinaTools.executeToolCall(
+                'people_get_person_details',
+                params
+              );
+              return result.data || { error: result.error };
+            },
+          }),
+        },
+      });
 
-  async extractMeetingDetails(email: EmailContext): Promise<MeetingIntent | null> {
+      console.log('AI processing result:', result.text);
+      console.log('Tools used:', result.steps.length, 'steps');
+
+      // Store the processing result with analysis data
+      await this.storeProcessingResultWithAnalysis(
+        email,
+        sessionId,
+        result,
+        analysisResult
+      );
+    } catch (error) {
+      console.error('Error in AI processing with analysis:', error);
+
+      // Update session with error status
+      await this.stinaTools.executeToolCall('backend_update_session', {
+        session_id: sessionId,
+        status: 'INITIATING',
+        progress: 0,
+        note: `Error processing email with analysis: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }
+
+  private async storeProcessingResultWithAnalysis(
+    email: EmailContext,
+    sessionId: string,
+    result: {
+      text: string;
+      steps: Array<{
+        toolCalls?: Array<{ toolName: string }>;
+      }>;
+    },
+    analysisResult: EmailAnalysisResult
+  ): Promise<void> {
+    try {
+      await adminDb
+        .collection('users')
+        .doc(this.userEmail)
+        .collection('email_processing_results')
+        .doc(email.id)
+        .set({
+          email_id: email.id,
+          session_id: sessionId,
+          subject: email.subject,
+          from: email.from,
+          processed_at: new Date().toISOString(),
+          ai_response: result.text,
+          steps_taken: result.steps.length,
+          tools_used: result.steps
+            .map((step) => step.toolCalls?.map((call) => call.toolName) || [])
+            .flat(),
+          processing_status: 'completed',
+          analysis_data: analysisResult,
+          user_email: this.userEmail,
+        });
+    } catch (error) {
+      console.error('Error storing processing result with analysis:', error);
+    }
+  }
+
+  async extractMeetingDetails(
+    email: EmailContext
+  ): Promise<MeetingIntent | null> {
     try {
       const meetingSchema = z.object({
         is_meeting_request: z.boolean(),
@@ -407,10 +587,11 @@ Please analyze this email and take appropriate actions according to your workflo
         agenda: z.string().optional(),
         urgency: z.enum(['low', 'medium', 'high']).optional(),
       });
-      
+
       const result = await generateObject({
         model: anthropic('claude-3-5-sonnet-20241022'),
-        system: 'You are an expert at extracting meeting details from emails. Extract structured information about meeting requests.',
+        system:
+          'You are an expert at extracting meeting details from emails. Extract structured information about meeting requests.',
         prompt: `
 Analyze this email and extract meeting details if this is a meeting request:
 
@@ -421,13 +602,13 @@ Body: ${email.body}
 If this is a meeting request, extract the details. If not, set is_meeting_request to false.`,
         schema: meetingSchema,
       });
-      
+
       const extractedData = result.object as z.infer<typeof meetingSchema>;
-      
+
       if (!extractedData.is_meeting_request) {
         return null;
       }
-      
+
       return {
         participants: extractedData.participants || [],
         duration: extractedData.duration || 60,
