@@ -93,6 +93,24 @@ const events = await calendarService.listEvents(calendarId);
 - URLs: `NEXT_PUBLIC_BASE_URL`, `MAILSLURP_API_BASE_URL`
 - MailSlurp: `MAILSLURP_API_KEY`
 
+## Task Completion Workflow
+
+Before completing any task, **ALWAYS** run the following checks:
+
+```bash
+npm run lint        # Check for TypeScript/ESLint issues
+npm run build       # Verify production build succeeds
+```
+
+Common lint issues to watch for:
+
+- `@typescript-eslint/no-unused-vars`: Remove unused imports and variables
+- `@typescript-eslint/no-explicit-any`: Replace `any` with proper types
+- Missing return types on functions
+- Unused function parameters (prefix with `_` if intentionally unused)
+
+**Critical**: Deployment will fail if lint issues exist. Always fix lint errors before considering a task complete.
+
 ## Code Style
 
 - TypeScript strict mode enabled
