@@ -19,6 +19,7 @@ export async function POST() {
     // Fetch emails
     const emails = await mailslurp.emailController.getEmailsPaginated({
       inboxId: [INBOX_ID],
+      unreadOnly: false,
     });
 
     // Get full email content for each email

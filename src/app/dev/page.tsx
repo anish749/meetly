@@ -62,7 +62,7 @@ export default function DevPage() {
         {emails.length > 0 && (
           <div className="mt-4">
             <h2 className="text-xl font-semibold mb-2">
-              Unread Emails ({emails.length})
+              All Emails ({emails.length})
             </h2>
             <div className="space-y-4">
               {emails.map((email) => (
