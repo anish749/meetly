@@ -67,7 +67,7 @@ export function StinaDashboard() {
       } else {
         toast.error('Failed to fetch email status');
       }
-    } catch (error) {
+    } catch {
       toast.error('Error fetching emails');
     } finally {
       setIsLoading(false);
@@ -99,10 +99,10 @@ export function StinaDashboard() {
         setLastProcessed(new Date());
         setUnreadEmails([]);
       } else {
-        const error = await response.json();
-        toast.error(error.error || 'Failed to process emails');
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Failed to process emails');
       }
-    } catch (error) {
+    } catch {
       toast.error('Error processing emails');
     } finally {
       setIsProcessing(false);
@@ -127,7 +127,7 @@ export function StinaDashboard() {
       } else {
         toast.error('Failed to update preferences');
       }
-    } catch (error) {
+    } catch {
       toast.error('Error updating preferences');
     }
   };

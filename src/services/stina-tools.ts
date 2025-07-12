@@ -1,6 +1,6 @@
 import { GoogleCalendarService } from './google-calendar-service';
 import { adminDb } from '@/config/firebase-admin';
-import { ContactInfo, UserPreferences } from './stina-agent';
+import { ContactInfo } from './stina-agent';
 
 export interface ToolCallResult {
   success: boolean;
@@ -22,15 +22,40 @@ export class StinaTools {
     try {
       switch (toolName) {
         case 'check_calendar_availability':
-          return await this.checkCalendarAvailability(parameters);
+          return await this.checkCalendarAvailability(
+            parameters as {
+              startDate: string;
+              endDate: string;
+              participants?: string[];
+            }
+          );
         case 'get_weather_info':
-          return await this.getWeatherInfo(parameters);
+          return await this.getWeatherInfo(
+            parameters as {
+              location: string;
+            }
+          );
         case 'find_nearby_venues':
-          return await this.findNearbyVenues(parameters);
+          return await this.findNearbyVenues(
+            parameters as {
+              location: string;
+              type: 'cafe' | 'restaurant' | 'meeting_room' | 'coworking';
+              radius?: number;
+            }
+          );
         case 'get_contact_preferences':
-          return await this.getContactPreferences(parameters);
+          return await this.getContactPreferences(
+            parameters as {
+              email: string;
+            }
+          );
         case 'update_contact_preferences':
-          return await this.updateContactPreferences(parameters);
+          return await this.updateContactPreferences(
+            parameters as {
+              email: string;
+              preferences: Record<string, unknown>;
+            }
+          );
         default:
           return {
             success: false,
@@ -109,7 +134,8 @@ export class StinaTools {
 
   private suggestMeetingTimes(
     busySlots: unknown[],
-    workingHours: { start: number; end: number }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _workingHours: { start: number; end: number }
   ): string[] {
     // Simple algorithm to suggest meeting times
     const suggestions = [];
@@ -200,7 +226,7 @@ export class StinaTools {
         success: true,
         data: weatherData,
       };
-    } catch (error) {
+    } catch {
       return {
         success: false,
         error: 'Weather service unavailable',
@@ -245,7 +271,7 @@ export class StinaTools {
           ),
         },
       };
-    } catch (error) {
+    } catch {
       return {
         success: false,
         error: 'Venue search service unavailable',
@@ -395,7 +421,7 @@ export class StinaTools {
           recommendations: this.generateContactRecommendations(contactData),
         },
       };
-    } catch (error) {
+    } catch {
       return {
         success: false,
         error: 'Failed to retrieve contact preferences',
@@ -464,7 +490,7 @@ export class StinaTools {
           preferences: parameters.preferences,
         },
       };
-    } catch (error) {
+    } catch {
       return {
         success: false,
         error: 'Failed to update contact preferences',

@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleCalendarService } from './google-calendar-service';
-import { AuthService } from './auth-service';
 import { adminDb } from '@/config/firebase-admin';
 import { StinaTools } from './stina-tools';
+import { FieldValue } from 'firebase-admin/firestore';
 
 export interface StinaTool {
   name: string;
@@ -226,7 +226,7 @@ export class StinaAgent {
     const tools = this.getTools();
     const stinaTools = new StinaTools(this.userEmail);
 
-    let messages: Anthropic.Messages.MessageParam[] = [
+    const messages: Anthropic.Messages.MessageParam[] = [
       {
         role: 'user',
         content: `
@@ -368,9 +368,12 @@ export class StinaAgent {
   }
 
   private async checkAvailability(
-    participants: string[],
-    preferredTimes: string[],
-    duration: number
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _participants: string[],
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _preferredTimes: string[],
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _duration: number
   ): Promise<{
     user: unknown;
     participants: Record<string, unknown>;
@@ -403,7 +406,7 @@ export class StinaAgent {
     // AI-powered slot finding based on availability and preferences
     const tools = this.getTools();
 
-    const message = await this.anthropic.messages.create({
+    await this.anthropic.messages.create({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 1000,
       tools,
@@ -478,7 +481,7 @@ export class StinaAgent {
           .set(
             {
               lastContact: new Date().toISOString(),
-              emailHistory: adminDb.FieldValue.arrayUnion({
+              emailHistory: FieldValue.arrayUnion({
                 id: email.id,
                 subject: email.subject,
                 date: email.createdAt,
